@@ -1,0 +1,54 @@
+{
+  "name": "t3-code-zh",
+  "version": "0.1.9",
+  "description": "One-click Simplified Chinese (zh-CN) localization CLI & AI Agent Skill for T3 Code desktop app (一键汉化 T3 Code)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eisen0419/t3-code-zh.git"
+  },
+  "homepage": "https://github.com/eisen0419/t3-code-zh#readme",
+  "bugs": {
+    "url": "https://github.com/eisen0419/t3-code-zh/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "t3-code-zh": "./patch-t3-zh.mjs"
+  },
+  "files": [
+    "patch-t3-zh.mjs",
+    "build-i18n.mjs",
+    "locales/",
+    "dist/zh-cn-i18n.js",
+    "scripts/audit-untranslated.mjs",
+    "assets/",
+    "SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node ./build-i18n.mjs",
+    "start": "node ./patch-t3-zh.mjs apply",
+    "patch": "node ./patch-t3-zh.mjs apply",
+    "restore": "node ./patch-t3-zh.mjs restore",
+    "status": "node ./patch-t3-zh.mjs status",
+    "install-watcher": "node ./patch-t3-zh.mjs install-watcher",
+    "uninstall-watcher": "node ./patch-t3-zh.mjs uninstall-watcher",
+    "audit": "node ./scripts/audit-untranslated.mjs",
+    "prepublishOnly": "node ./build-i18n.mjs"
+  },
+  "keywords": [
+    "t3-code",
+    "t3code",
+    "zh-cn",
+    "chinese",
+    "i18n",
+    "localization",
+    "l10n",
+    "agent-skill",
+    "汉化"
+  ]
+}

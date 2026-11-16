@@ -1,0 +1,9 @@
+# Node & OS
+node_modules/
+.DS_Store
+*.log
+
+# Runtime logs & local overrides
+dist/auto-patch.log
+onepassword-preload.js
+*.tgz
