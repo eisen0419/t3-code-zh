@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import vm from "node:vm";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -236,6 +237,104 @@ function replaceOptionalRegex(source, regex, replacement, label) {
     return { code: source, applied: false };
   }
   return { code: source.replace(regex, replacement), applied: true };
+}
+
+/**
+ * Automatically extract official en -> zh string & template pairs from T3 Code v0.1.10+
+ * General Translation catalog bundles inside app.asar so brand-new upstream strings are
+ * absorbed immediately during updates even before the open-source dictionary is updated.
+ */
+function evalPureCatalogModule(code) {
+  const expIdx = code.lastIndexOf("export{");
+  if (expIdx === -1) return null;
+  const body = code.slice(0, expIdx);
+  const expPart = code.slice(expIdx + 7, code.lastIndexOf("}"));
+  const pairs = expPart
+    .split(",")
+    .map(s => {
+      const m = /^\s*([A-Za-z0-9_$]+)(?:\s+as\s+([A-Za-z0-9_$]+))?\s*$/.exec(s);
+      return m ? `${JSON.stringify(m[2] || m[1])}:${m[1]}` : "";
+    })
+    .filter(Boolean);
+  const ctx = vm.createContext(Object.create(null));
+  const mod = vm.runInNewContext(`(function(){${body}\nreturn {${pairs.join(",")}};})()`, ctx, {
+    timeout: 2000
+  });
+  return mod?.default || mod;
+}
+
+function extractUpstreamGtCatalog(srcFd, dataOffset, header) {
+  const extraExact = {};
+  const extraTemplates = {};
+  try {
+    const enAssetPath = findClientAsset(header, /^en-[A-Za-z0-9_-]+\.js$/);
+    const zhAssetPath = findClientAsset(header, /^zh-[A-Za-z0-9_-]+\.js$/);
+    if (!enAssetPath || !zhAssetPath) return { extraExact, extraTemplates };
+
+    const enObj = evalPureCatalogModule(readFileFromAsar(srcFd, dataOffset, header, enAssetPath));
+    const zhObj = evalPureCatalogModule(readFileFromAsar(srcFd, dataOffset, header, zhAssetPath));
+    if (!enObj || !zhObj) return { extraExact, extraTemplates };
+
+    for (const [k, enVal] of Object.entries(enObj)) {
+      const zhVal = zhObj[k];
+      if (typeof enVal !== "string" || typeof zhVal !== "string" || enVal === zhVal) continue;
+      if (/Shanghai|Beijing|上海|北京/i.test(zhVal)) continue;
+
+      if (!enVal.includes("{") && !enVal.includes("<")) {
+        // Skip lowercase space-separated search-index keyword lists (never rendered as UI text)
+        if (/^[a-z0-9 ./+-]+$/.test(enVal) && enVal.split(" ").length >= 4) continue;
+        extraExact[enVal] = zhVal;
+      } else if (
+        !enVal.includes(", plural,") &&
+        !enVal.includes(", select,") &&
+        /^\{?[A-Za-z0-9_.,:;?! '"“”‘’()/+-]+\}?$/.test(enVal.replace(/\{[A-Za-z0-9_]+\}/g, "X"))
+      ) {
+        const vars = [...enVal.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map(m => m[1]);
+        const zhVars = [...zhVal.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map(m => m[1]);
+        if (
+          vars.length >= 1 &&
+          vars.length <= 3 &&
+          new Set(vars).size === vars.length &&
+          zhVars.every(v => vars.includes(v))
+        ) {
+          const tmplKey = enVal.replace(/\{[A-Za-z0-9_]+\}/g, "${}");
+          const literalLen = tmplKey.replace(/\$\{\}/g, "").trim().length;
+          if (literalLen >= 10) {
+            const sameOrder =
+              vars.length === zhVars.length && vars.every((v, idx) => v === zhVars[idx]);
+            extraTemplates[tmplKey] = sameOrder
+              ? zhVal.replace(/\{[A-Za-z0-9_]+\}/g, "${}")
+              : zhVal.replace(
+                  /\{([A-Za-z0-9_]+)\}/g,
+                  (_m, vName) => `\${${vars.indexOf(vName) + 1}}`
+                );
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[WARN] Upstream GT catalog extraction skipped:", err.message);
+  }
+  return { extraExact, extraTemplates };
+}
+
+/**
+ * Pre-flight V8 syntax validation gate: ensures every modified .js / .cjs buffer
+ * parses cleanly BEFORE tmpAsarPath ever replaces app.asar.
+ */
+function verifyModifiedBundles(modifiedFiles) {
+  for (const [relPath, buf] of modifiedFiles.entries()) {
+    if (relPath.endsWith(".cjs")) {
+      const code = buf.toString("utf8");
+      new vm.Script(code, { filename: relPath });
+    } else if (relPath.endsWith(".js")) {
+      execFileSync(process.execPath, ["--check", "--input-type=module"], {
+        input: buf,
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 15000
+      });
+    }
+  }
 }
 
 function buildMainProcessI18nHelper({ enable1Password = false } = {}) {
@@ -504,7 +603,7 @@ function buildMainProcessI18nHelper({ enable1Password = false } = {}) {
       try {
         for (const win of electron.BrowserWindow.getAllWindows()) {
           win.webContents.executeJavaScript(
-            \`try{localStorage.setItem("t3code:locale",\${JSON.stringify(currentLocale)});location.reload();}catch{}\`
+            \`try{if(globalThis.__t3SetLocale){globalThis.__t3SetLocale(\${JSON.stringify(currentLocale)});}else{localStorage.setItem("t3code:locale",\${JSON.stringify(currentLocale)});location.reload();}}catch{}\`
           );
         }
       } catch {}
@@ -606,6 +705,7 @@ function buildMainProcessI18nHelper({ enable1Password = false } = {}) {
   function buildLanguageMenuItem() {
     const isZh = getMainLocale() !== "en";
     return {
+      id: "__t3-zh-view-lang-menu",
       label: isZh ? "界面语言 (Language)" : "Language (界面语言)",
       submenu: [
         {
@@ -640,7 +740,11 @@ function buildMainProcessI18nHelper({ enable1Password = false } = {}) {
       }
       if (Array.isArray(next.submenu)) {
         next.submenu = translateMenuTemplate(next.submenu, false);
-        if (isAppMenu && (origLabel === "View" || origLabel === "视图")) {
+        if (
+          isAppMenu &&
+          (origLabel === "View" || origLabel === "视图") &&
+          !next.submenu.some(sub => sub && sub.id === "__t3-zh-view-lang-menu")
+        ) {
           next.submenu = [...next.submenu, { type: "separator" }, buildLanguageMenuItem()];
         }
       }
@@ -710,10 +814,6 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
   const ts = new Date().toISOString();
   console.log(`[${ts}] Starting T3 Code zh-CN patcher...`);
 
-  // Build fresh zh-cn-i18n.js bundle
-  const { buildI18nBundle } = await import("./build-i18n.mjs");
-  const builtRuntimeCode = buildI18nBundle(I18N_ASSET_PATH);
-
   const currentVersion = readAsarVersion(appAsarPath);
 
   if (!isCurrentlyPatched) {
@@ -740,13 +840,21 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
 
   const enable1Password = Boolean(with1Password && fs.existsSync(ONEPASSWORD_PRELOAD_PATH));
   const onePasswordPreloadCode = enable1Password
-    ? fs.readFileSync(ONEPASSWORD_PRELOAD_PATH, "utf8")
+    ? `globalThis.__t3Enable1PasswordToolbar = true;\n` +
+      fs.readFileSync(ONEPASSWORD_PRELOAD_PATH, "utf8")
     : "";
 
   try {
+    // Automatically absorb any brand-new en -> zh translations shipped in T3 Code's own GT catalog
+    const upstreamGt = extractUpstreamGtCatalog(srcFd, dataOffset, header);
+
+    // Build fresh zh-cn-i18n.js bundle
+    const { buildI18nBundle } = await import("./build-i18n.mjs");
+    const builtRuntimeCode = buildI18nBundle(I18N_ASSET_PATH, upstreamGt);
+
     const modifiedFiles = new Map();
 
-    // (a) zh-cn-i18n.js
+    // (a) zh-cn-i18n.js (all UI controls & translations live here — zero feature-bundle regex edits!)
     const baseI18nText = fs.existsSync(I18N_ASSET_PATH)
       ? fs.readFileSync(I18N_ASSET_PATH, "utf8")
       : builtRuntimeCode;
@@ -766,7 +874,7 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
     );
     modifiedFiles.set("apps/server/dist/client/index.html", Buffer.from(indexHtml, "utf8"));
 
-    // (c) jsx-runtime-*.js (adaptive filename + adaptive minifier variable names)
+    // (c) jsx-runtime-*.js (pass only local parameters (type, props, marker) — zero cross-scope identifiers!)
     const jsxRuntimePath = findClientAsset(header, /^jsx-runtime-[A-Za-z0-9_-]+\.js$/);
     if (!jsxRuntimePath) throw new Error("Could not find jsx-runtime-*.js in ASAR");
     let jsxRuntime = readFileFromAsar(srcFd, dataOffset, header, jsxRuntimePath);
@@ -776,12 +884,12 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
         jsxRuntime,
         /return\s+([A-Za-z0-9_$]+)=([A-Za-z0-9_$]+)\.ref,\{\$\$typeof:([A-Za-z0-9_$]+),type:([A-Za-z0-9_$]+),key:([A-Za-z0-9_$]+),ref:\1===void 0\?null:\1,props:\2\}/,
         (_match, ref, props, marker, type, key) =>
-          `return ${ref}=${props}.ref,${props}=globalThis.__t3TransformProps?globalThis.__t3TransformProps(${type},${props}):${props},{$$typeof:${marker},type:${type},key:${key},ref:${ref}===void 0?null:${ref},props:${props}}`,
+          `return ${ref}=${props}.ref,${props}=globalThis.__t3TransformProps?globalThis.__t3TransformProps(${type},${props},${marker}):${props},{$$typeof:${marker},type:${type},key:${key},ref:${ref}===void 0?null:${ref},props:${props}}`,
         `${path.basename(jsxRuntimePath)} transformProps hook`
       );
     modifiedFiles.set(jsxRuntimePath, Buffer.from(jsxRuntime, "utf8"));
 
-    // (d) react-*.js (adaptive filename + adaptive minifier variable names)
+    // (d) react-*.js (createElement hook using only local parameters)
     const reactPath = findClientAsset(header, /^react-[A-Za-z0-9_-]+\.js$/);
     if (reactPath) {
       let reactBundle = readFileFromAsar(srcFd, dataOffset, header, reactPath);
@@ -789,182 +897,24 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
         reactBundle,
         /function\s+([A-Za-z0-9_$]+)\(([A-Za-z0-9_$]+),([A-Za-z0-9_$]+),([A-Za-z0-9_$]+)\)\{var\s+([A-Za-z0-9_$]+)=\4\.ref;return\{\$\$typeof:([A-Za-z0-9_$]+),type:\2,key:\3,ref:\5===void 0\?null:\5,props:\4\}\}/,
         (_match, fn, type, key, props, ref, marker) =>
-          `function ${fn}(${type},${key},${props}){var ${ref}=${props}.ref;return ${props}=globalThis.__t3TransformProps?globalThis.__t3TransformProps(${type},${props}):${props},{$$typeof:${marker},type:${type},key:${key},ref:${ref}===void 0?null:${ref},props:${props}}}`,
+          `function ${fn}(${type},${key},${props}){var ${ref}=${props}.ref;return ${props}=globalThis.__t3TransformProps?globalThis.__t3TransformProps(${type},${props},${marker}):${props},{$$typeof:${marker},type:${type},key:${key},ref:${ref}===void 0?null:${ref},props:${props}}}`,
         `${path.basename(reactPath)} createElement hook`
       );
       if (res.applied) modifiedFiles.set(reactPath, Buffer.from(res.code, "utf8"));
     }
 
-    // (e) main-*.js (Sidebar footer 1-click [中/EN] toggle icon button)
-    const mainBundlePath = findClientAsset(header, /^main-[A-Za-z0-9_-]+\.js$/);
-    if (mainBundlePath) {
-      let mainBundle = readFileFromAsar(srcFd, dataOffset, header, mainBundlePath);
-      const res = replaceOptionalRegex(
-        mainBundle,
-        /\(0,([A-Za-z0-9_$]+)\.jsxs\)\(\1\.Fragment,\{children:\[\(0,\1\.jsx\)\(([A-Za-z0-9_$]+),\{icon:\(0,\1\.jsx\)\(([A-Za-z0-9_$]+),\{\}\),label:`Settings`,onClick:([A-Za-z0-9_$]+)\}\),([A-Za-z0-9_$]+)\?\(0,\1\.jsx\)\(\2,\{icon:\(0,\1\.jsx\)\(([A-Za-z0-9_$.]+),\{\}\),label:`Pull requests`,onClick:([A-Za-z0-9_$]+)\}\):null,\(0,\1\.jsx\)\(\2,\{icon:\(0,\1\.jsx\)\(([A-Za-z0-9_$]+),\{\}\),label:`Usage`,onClick:([A-Za-z0-9_$]+)\}\)\]\}\)/,
-        `(0,$1.jsxs)($1.Fragment,{children:[(0,$1.jsx)($2,{icon:(0,$1.jsx)($3,{}),label:\`Settings\`,onClick:$4}),$5?(0,$1.jsx)($2,{icon:(0,$1.jsx)($6,{}),label:\`Pull requests\`,onClick:$7}):null,(0,$1.jsx)($2,{icon:(0,$1.jsx)($8,{}),label:\`Usage\`,onClick:$9}),(0,$1.jsx)($2,{icon:(0,$1.jsx)(\`span\`,{className:\`text-[11px] font-bold leading-none tracking-tighter\`,children:(globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`)===\`en\`?\`中\`:\`EN\`}),label:(globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`)===\`en\`?\`切换为简体中文\`:\`Switch to English (切换语言)\`,onClick:()=>{let cur=globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`;globalThis.__t3SetLocale&&globalThis.__t3SetLocale(cur===\`en\`?\`zh-CN\`:\`en\`)}})]})`,
-        `${path.basename(mainBundlePath)} sidebar footer language switcher`
-      );
-      if (res.applied) modifiedFiles.set(mainBundlePath, Buffer.from(res.code, "utf8"));
-    }
-
-    // (e2) Optional PreviewPanel-*.js 1Password button (only when --with-1password is explicitly enabled)
-    if (enable1Password) {
-      const previewPanelPath = findClientAsset(header, /^PreviewPanel-[A-Za-z0-9_-]+\.js$/);
-      if (previewPanelPath) {
-        let previewPanel = readFileFromAsar(srcFd, dataOffset, header, previewPanelPath);
-        const tooltipExtractRe = /\(0,([A-Za-z0-9_$]+)\.jsxs\)\(([A-Za-z0-9_$]+),\{children:\[\(0,\1\.jsx\)\(([A-Za-z0-9_$]+),\{render:\(0,\1\.jsx\)\(([A-Za-z0-9_$]+),\{variant:[A-Za-z0-9_$]+\?`secondary`:`ghost`,size:`icon-xs`,onClick:[A-Za-z0-9_$]+,"aria-label":[A-Za-z0-9_$]+\?`Close floating preview`:`Float preview over chat`[\s\S]*?\(0,\1\.jsx\)\(([A-Za-z0-9_$]+),\{children:/;
-        const tm = tooltipExtractRe.exec(previewPanel);
-        if (tm) {
-          const [, jsxNs, TooltipRoot, TooltipTrigger, ButtonComp, TooltipContent] = tm;
-          const opBtnExpr = `(0,${jsxNs}.jsxs)(${TooltipRoot},{children:[(0,${jsxNs}.jsx)(${TooltipTrigger},{render:(0,${jsxNs}.jsx)(${ButtonComp},{variant:\`ghost\`,size:\`icon-xs\`,type:\`button\`,"aria-label":\`1Password\`,"data-t3-1password-toolbar-btn":!0,onClick:()=>{window.desktopBridge?.toggle1PasswordPopup?.().then(r=>{if(!r||!r.sentToWebview)globalThis.__t3ToggleMain1PasswordPopup?.()})}}),children:(0,${jsxNs}.jsxs)(\`svg\`,{viewBox:\`0 0 24 24\`,fill:\`none\`,className:\`size-4\`,children:[(0,${jsxNs}.jsx)(\`circle\`,{cx:\`12\`,cy:\`12\`,r:\`10\`,fill:\`#0A85EA\`}),(0,${jsxNs}.jsx)(\`circle\`,{cx:\`12\`,cy:\`12\`,r:\`7.3\`,stroke:\`#FFFFFF\`,strokeWidth:\`1.6\`}),(0,${jsxNs}.jsx)(\`rect\`,{x:\`10.7\`,y:\`7.2\`,width:\`2.6\`,height:\`4\`,rx:\`1.1\`,fill:\`#FFFFFF\`}),(0,${jsxNs}.jsx)(\`path\`,{d:\`M10.9 12.2H13.1L13.5 16.5H10.5L10.9 12.2Z\`,fill:\`#FFFFFF\`})]})}),(0,${jsxNs}.jsx)(${TooltipContent},{children:(globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`)===\`en\`?\`1Password Autofill (⌘\\\\)\`:\`1Password 自动填充 (⌘\\\\)\`})]})`;
-          const res = replaceOptionalRegex(
-            previewPanel,
-            /(\(0,[A-Za-z0-9_$]+\.jsxs\)\(`form`,\{onSubmit:[A-Za-z0-9_$]+,className:`flex h-10 min-h-10 shrink-0 items-center gap-1[^`]*`,"data-surface-subheader":!0,children:\[[A-Za-z0-9_$]+,[A-Za-z0-9_$]+,[A-Za-z0-9_$]+,)([A-Za-z0-9_$]+,[A-Za-z0-9_$]+,[A-Za-z0-9_$]+,[A-Za-z0-9_$]+\]\}\))/,
-            `$1${opBtnExpr},$2`,
-            `${path.basename(previewPanelPath)} 1Password toolbar button`
-          );
-          if (res.applied) modifiedFiles.set(previewPanelPath, Buffer.from(res.code, "utf8"));
-        }
-      }
-    }
-
-    // (f) _chat.settings-*.js (Settings Top Header Bar prominent Language Switcher button)
-    const chatSettingsPath = findClientAsset(header, /^_chat\.settings-[A-Za-z0-9_-]+\.js$/);
-    if (chatSettingsPath) {
-      let chatSettings = readFileFromAsar(srcFd, dataOffset, header, chatSettingsPath);
-      const restoreIdx = chatSettings.indexOf("Restore device defaults");
-      const btnIdentMatch =
-        restoreIdx !== -1
-          ? /\(0,[A-Za-z0-9_$]+\.jsxs?\)\(([A-Za-z0-9_$]+),\{size:`xs`,variant:`(?:outline|ghost)`/.exec(
-              chatSettings.slice(Math.max(0, restoreIdx - 150), restoreIdx + 350)
-            )
-          : null;
-      const btnIdent = btnIdentMatch ? btnIdentMatch[1] : null;
-      const langBtnRender = btnIdent
-        ? `(0,$6.jsx)(${btnIdent},{size:\`xs\`,variant:\`outline\`,onClick:()=>{let cur=globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`;globalThis.__t3SetLocale&&globalThis.__t3SetLocale(cur===\`en\`?\`zh-CN\`:\`en\`)},title:\`切换界面语言 / Switch UI Language\`,children:(globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`)===\`en\`?\`🌐 简体中文\`:\`🌐 English\`})`
-        : `(0,$6.jsx)(\`button\`,{type:\`button\`,className:\`inline-flex h-6 items-center justify-center rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground hover:bg-accent\`,onClick:()=>{let cur=globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`;globalThis.__t3SetLocale&&globalThis.__t3SetLocale(cur===\`en\`?\`zh-CN\`:\`en\`)},title:\`切换界面语言 / Switch UI Language\`,children:(globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`)===\`en\`?\`🌐 简体中文\`:\`🌐 English\`})`;
-
-      const res = replaceOptionalRegex(
-        chatSettings,
-        /let\s+([A-Za-z0-9_$]+);([A-Za-z0-9_$]+)\[(\d+)\]===([A-Za-z0-9_$]+)\?\1=\2\[(\d+)\]:\(\1=\(0,([A-Za-z0-9_$]+)\.jsxs\)\(`div`,\{className:`ms-auto flex shrink-0 items-center gap-1`,children:\[\4,([A-Za-z0-9_$]+)\]\}\),\2\[\3\]=\4,\2\[\5\]=\1\);/,
-        `let langBtn=${langBtnRender},$1;$2[$3]===$4?$1=$2[$5]:($1=(0,$6.jsxs)(\`div\`,{className:\`ms-auto flex shrink-0 items-center gap-1.5\`,children:[langBtn,$4,$7]}),$2[$3]=$4,$2[$5]=$1);`,
-        `${path.basename(chatSettingsPath)} header language toggle button`
-      );
-      if (res.applied) modifiedFiles.set(chatSettingsPath, Buffer.from(res.code, "utf8"));
-    }
-
-    // (g) SettingsPanels-*.js (UI language selector in Display at top of Settings -> General)
-    const settingsPanelsPath = findClientAsset(header, /^SettingsPanels-[A-Za-z0-9_-]+\.js$/);
-    if (settingsPanelsPath) {
-      let settingsPanels = readFileFromAsar(srcFd, dataOffset, header, settingsPanelsPath);
-      const triggerMatch = /\(0,([A-Za-z0-9_$]+)\.jsx\)\(([A-Za-z0-9_$]+),\{size:`sm`,className:`w-full sm:w-40`,"aria-label":`Timestamp format`,children:\(0,\1\.jsx\)\(([A-Za-z0-9_$]+),/.exec(
-        settingsPanels
-      );
-      const popupMatch = /\(0,[A-Za-z0-9_$]+\.jsxs\)\(([A-Za-z0-9_$]+),\{align:`end`,alignItemWithTrigger:!1,children:\[\(0,[A-Za-z0-9_$]+\.jsx\)\(([A-Za-z0-9_$]+),\{hideIndicator:!0,value:`locale`/.exec(
-        settingsPanels
-      );
-      const rootMatch = /\(0,[A-Za-z0-9_$]+\.jsxs\)\(([A-Za-z0-9_$]+),\{value:[A-Za-z0-9_$.]+timestampFormat,onValueChange:/.exec(
-        settingsPanels
-      );
-
-      if (triggerMatch && popupMatch && rootMatch) {
-        const jsxNs = triggerMatch[1];
-        const selTrigger = triggerMatch[2];
-        const selValue = triggerMatch[3];
-        const selPopup = popupMatch[1];
-        const selItem = popupMatch[2];
-        const selRoot = rootMatch[1];
-
-        const r1 = replaceOptionalRegex(
-          settingsPanels,
-          /\(0,([A-Za-z0-9_$]+)\.jsx\)\(([A-Za-z0-9_$]+),\{id:`display`,title:`Display`,children:\(0,\1\.jsx\)\(([A-Za-z0-9_$]+),\{\.\.\.([A-Za-z0-9_$]+),description:`System default follows your browser or OS clock preference\.`,resetAction:([A-Za-z0-9_$]+),control:([A-Za-z0-9_$]+)\}\)\}\)/,
-          `(0,${jsxNs}.jsxs)($2,{id:\`display\`,title:\`Display\`,children:[(0,${jsxNs}.jsx)($3,{id:\`language\`,title:\`UI language\`,description:\`Choose the display language for the T3 Code interface.\`,control:(0,${jsxNs}.jsxs)(${selRoot},{value:globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`,onValueChange:e=>{globalThis.__t3SetLocale&&globalThis.__t3SetLocale(e)},children:[(0,${jsxNs}.jsx)(${selTrigger},{size:\`sm\`,className:\`w-full sm:w-40\`,"aria-label":\`UI language\`,children:(0,${jsxNs}.jsx)(${selValue},{children:(globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`)===\`en\`?\`English\`:\`简体中文\`})}),(0,${jsxNs}.jsxs)(${selPopup},{align:\`end\`,alignItemWithTrigger:!1,children:[(0,${jsxNs}.jsx)(${selItem},{hideIndicator:!0,value:\`zh-CN\`,children:\`简体中文\`}),(0,${jsxNs}.jsx)(${selItem},{hideIndicator:!0,value:\`en\`,children:\`English\`})]})]})}),(0,${jsxNs}.jsx)($3,{...$4,description:\`System default follows your browser or OS clock preference.\`,resetAction:$5,control:$6})]})`,
-          `${path.basename(settingsPanelsPath)} Language selector in Display`
-        );
-
-        let finalCode = r1.code;
-        let r2Applied = false;
-        const dispVarMatch = /([A-Za-z0-9_$]+)=\(0,[A-Za-z0-9_$]+\.jsxs?\)\([A-Za-z0-9_$]+,\{id:`display`,title:`Display`/.exec(
-          finalCode
-        );
-        if (dispVarMatch) {
-          const dispVar = dispVarMatch[1];
-          const escapedDispVar = dispVar.replace(/\$/g, "\\$");
-          const r2 = replaceOptionalRegex(
-            finalCode,
-            new RegExp(`children:\\[((?:[A-Za-z0-9_$]+,)+)${escapedDispVar}\\]\\}\\)`),
-            (_m, before) => `children:[${dispVar},${before.slice(0, -1)}]})`,
-            `${path.basename(settingsPanelsPath)} move Display section to top of General`
-          );
-          finalCode = r2.code;
-          r2Applied = r2.applied;
-        }
-        if (r1.applied || r2Applied) {
-          modifiedFiles.set(settingsPanelsPath, Buffer.from(finalCode, "utf8"));
-        }
-      } else {
-        console.warn(
-          `[WARN] Optional patch skipped (Select primitives changed): ${path.basename(settingsPanelsPath)}`
-        );
-      }
-    }
-
-    // (h) settingsSearch-*.js (UI language item + bilingual search)
-    const settingsSearchPath = findClientAsset(header, /^settingsSearch-[A-Za-z0-9_-]+\.js$/);
-    if (settingsSearchPath) {
-      let settingsSearch = readFileFromAsar(srcFd, dataOffset, header, settingsSearchPath);
-      const r1 = replaceOptionalRegex(
-        settingsSearch,
-        /\{id:`time-format`,title:`Time format`,to:`\/settings\/general`,searchTerms:\[`timestamp clock locale system browser os 12 hour 24 hour`\]\}/,
-        `{id:\`language\`,title:\`UI language\`,to:\`/settings/general\`,searchTerms:[\`language ui locale chinese english 简体中文 语言 界面语言 汉化\`]},{id:\`time-format\`,title:\`Time format\`,to:\`/settings/general\`,searchTerms:[\`timestamp clock locale system browser os 12 hour 24 hour\`]}`,
-        `${path.basename(settingsSearchPath)} language entry`
-      );
-      const r2 = replaceOptionalRegex(
-        r1.code,
-        /let\s+([A-Za-z0-9_$]+)=([A-Za-z0-9_$]+)\(([A-Za-z0-9_$]+)\.title\),([A-Za-z0-9_$]+)=\[\1,\2\(([A-Za-z0-9_$]+)\[\3\.to\]\),\.\.\.\(\3\.searchTerms\?\?\[\]\)\.map\(\2\)\];/,
-        `let _tr=globalThis.__t3TrForceZh||globalThis.__t3Tr,_zhT=_tr?_tr($3.title):"",_zhS=_tr&&$5[$3.to]?_tr($5[$3.to]):"",$1=$2($3.title),$4=[$1,$2(_zhT),$2($5[$3.to]),$2(_zhS),...($3.searchTerms??[]).map($2)];`,
-        `${path.basename(settingsSearchPath)} bilingual search index`
-      );
-      if (r1.applied || r2.applied) {
-        modifiedFiles.set(settingsSearchPath, Buffer.from(r2.code, "utf8"));
-      }
-    }
-
-    // (h2) keybindingsSearch.logic-*.js (Bilingual Chinese/English shortcut search)
-    const kbLogicPath = findClientAsset(header, /^keybindingsSearch\.logic-[A-Za-z0-9_-]+\.js$/);
-    if (kbLogicPath) {
-      let kbLogic = readFileFromAsar(srcFd, dataOffset, header, kbLogicPath);
-      const res = replaceOptionalRegex(
-        kbLogic,
-        /return\[e\.label,e\.command,\.\.\.r,e\.groupLabel\]/,
-        `return[e.label,globalThis.__t3Tr?globalThis.__t3Tr(e.label):"",e.command,...r,e.groupLabel,globalThis.__t3Tr?globalThis.__t3Tr(e.groupLabel):""]`,
-        `${path.basename(kbLogicPath)} bilingual search`
-      );
-      if (res.applied) modifiedFiles.set(kbLogicPath, Buffer.from(res.code, "utf8"));
-    }
-
-    // (i) timestampFormat-*.js (Relative time localization)
-    const tsFormatPath = findClientAsset(header, /^timestampFormat-[A-Za-z0-9_-]+\.js$/);
-    if (tsFormatPath) {
-      let tsFormat = readFileFromAsar(srcFd, dataOffset, header, tsFormatPath);
-      const res = replaceOptionalRegex(
-        tsFormat,
-        /function\s+([A-Za-z0-9_$]+)\(([A-Za-z0-9_$]+)\)\{let\s+([A-Za-z0-9_$]+)=Math\.floor\(\2\/1e3\);if\(\3<60\)return\{value:`just now`,suffix:null\};let\s+([A-Za-z0-9_$]+)=Math\.floor\(\3\/60\);if\(\4<60\)return\{value:`\$\{\4\}m`,suffix:`ago`\};let\s+([A-Za-z0-9_$]+)=Math\.floor\(\4\/60\);return\s+\5<24\?\{value:`\$\{\5\}h`,suffix:`ago`\}:\{value:`\$\{Math\.floor\(\5\/24\)\}d`,suffix:`ago`\}\}/,
-        `function $1($2){let zh=(globalThis.__t3GetLocale?globalThis.__t3GetLocale():\`zh-CN\`)!==\`en\`,$3=Math.floor($2/1e3);if($3<60)return{value:zh?\`刚刚\`:\`just now\`,suffix:null};let $4=Math.floor($3/60);if($4<60)return{value:zh?\`\${$4} 分钟\`:\`\${$4}m\`,suffix:zh?\`前\`:\`ago\`};let $5=Math.floor($4/60);return $5<24?{value:zh?\`\${$5} 小时\`:\`\${$5}h\`,suffix:zh?\`前\`:\`ago\`}:{value:zh?\`\${Math.floor($5/24)} 天\`:\`\${Math.floor($5/24)}d\`,suffix:zh?\`前\`:\`ago\`}}`,
-        `${path.basename(tsFormatPath)} relative time`
-      );
-      if (res.applied) modifiedFiles.set(tsFormatPath, Buffer.from(res.code, "utf8"));
-    }
-
-    // (j) toast-*.js & toastHelpers-*.js
+    // (e) toast-*.js & toastHelpers-*.js (supports both 2-arg and 3-arg showContextMenu signatures)
     const toastPath = findClientAsset(header, /^toast-[A-Za-z0-9_-]+\.js$/);
     if (toastPath) {
       let toastJs = readFileFromAsar(srcFd, dataOffset, header, toastPath);
       const res = replaceOptionalRegex(
         toastJs,
-        /contextMenu:\{show:async\(([A-Za-z0-9_$]+),([A-Za-z0-9_$]+)\)=>window\.desktopBridge\?window\.desktopBridge\.showContextMenu\(\1,\2\):([A-Za-z0-9_$]+)\(\1,\2\),close:async\(\)=>\{window\.desktopBridge\|\|([A-Za-z0-9_$]+)\(\)\}\}/,
-        `contextMenu:{show:async($1,$2)=>{let m=globalThis.__t3TrMenuItems?globalThis.__t3TrMenuItems($1):$1;return window.desktopBridge?window.desktopBridge.showContextMenu(m,$2):$3(m,$2)},close:async()=>{window.desktopBridge||$4()}}`,
+        /contextMenu:\{show:async\(([A-Za-z0-9_$]+),([A-Za-z0-9_$]+)(?:,([A-Za-z0-9_$]+))?\)=>window\.desktopBridge\?window\.desktopBridge\.showContextMenu\(\1,\2(?:,\3)?\):([A-Za-z0-9_$]+)\(\1,\2\),close:async\(\)=>\{window\.desktopBridge\|\|([A-Za-z0-9_$]+)\(\)\}\}/,
+        (_m, itemsArg, arg2, arg3, fallbackFn, closeFn) => {
+          const sig = arg3 ? `${itemsArg},${arg2},${arg3}` : `${itemsArg},${arg2}`;
+          const bridgeArgs = arg3 ? `m,${arg2},${arg3}` : `m,${arg2}`;
+          return `contextMenu:{show:async(${sig})=>{let m=globalThis.__t3TrMenuItems?globalThis.__t3TrMenuItems(${itemsArg}):${itemsArg};return window.desktopBridge?window.desktopBridge.showContextMenu(${bridgeArgs}):${fallbackFn}(m,${arg2})},close:async()=>{window.desktopBridge||${closeFn}()}}`;
+        },
         `${path.basename(toastPath)} contextMenu.show hook`
       );
       if (res.applied) modifiedFiles.set(toastPath, Buffer.from(res.code, "utf8"));
@@ -982,7 +932,7 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
       if (res.applied) modifiedFiles.set(toastHelpersPath, Buffer.from(res.code, "utf8"));
     }
 
-    // (k) preload.cjs (UI locale bridge)
+    // (f) preload.cjs (UI locale bridge)
     if (getFileNode(header, "apps/desktop/dist-electron/preload.cjs")) {
       let preloadCjs = readFileFromAsar(srcFd, dataOffset, header, "apps/desktop/dist-electron/preload.cjs");
       const extraBridge = enable1Password
@@ -999,7 +949,7 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
       }
     }
 
-    // (k2) Optional preview-pick-preload.cjs (only when --with-1password is enabled)
+    // (f2) Optional preview-pick-preload.cjs (only when --with-1password is enabled)
     if (
       enable1Password &&
       getFileNode(header, "apps/desktop/dist-electron/preview-pick-preload.cjs") &&
@@ -1018,7 +968,7 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
       );
     }
 
-    // (l) main.cjs
+    // (g) main.cjs
     if (getFileNode(header, "apps/desktop/dist-electron/main.cjs")) {
       let mainCjs = readFileFromAsar(srcFd, dataOffset, header, "apps/desktop/dist-electron/main.cjs");
       mainCjs = buildMainProcessI18nHelper({ enable1Password }) + "\n" + mainCjs;
@@ -1056,6 +1006,9 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
       }
       modifiedFiles.set("apps/desktop/dist-electron/main.cjs", Buffer.from(mainCjs, "utf8"));
     }
+
+    // Pre-flight V8 syntax validation BEFORE writing or replacing app.asar!
+    verifyModifiedBundles(modifiedFiles);
 
     // 2. Append modified/new files to the end of the clean ASAR payload
     const bakStat = fs.statSync(backupAsarPath);
@@ -1117,8 +1070,16 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
     console.log(
       `\n✅ Successfully patched T3 Code (v${currentVersion}) with Simplified Chinese (zh-CN) localization!`
     );
+    console.log(`   Verified ${modifiedFiles.size} patched bundles with V8 syntax gate (0 warnings).`);
     console.log(`   Target: ${appAsarPath}`);
     console.log(`   Tip: Press Cmd+R (macOS) or Ctrl+R (Win/Linux) inside T3 Code to reload immediately.`);
+  } catch (err) {
+    if (fs.existsSync(tmpAsarPath)) {
+      try {
+        fs.unlinkSync(tmpAsarPath);
+      } catch {}
+    }
+    throw err;
   } finally {
     fs.closeSync(srcFd);
   }
@@ -1163,8 +1124,6 @@ function showStatus({ appPath = null } = {}) {
 }
 
 function syncStandaloneWatcherRuntime() {
-  // When invoked via `npx`, __dirname may point to a temporary npm cache directory.
-  // Copy the self-contained patcher files into ~/.t3/zh-cn-patcher so LaunchAgent always has a permanent script.
   const isTempDir = __dirname.includes("_npx") || __dirname.startsWith(os.tmpdir());
   if (!isTempDir) {
     return __filename;
@@ -1190,7 +1149,7 @@ function syncStandaloneWatcherRuntime() {
   return path.join(PERSISTENT_WATCHER_DIR, "patch-t3-zh.mjs");
 }
 
-function installAutoUpdateWatcher({ appPath = null } = {}) {
+function installAutoUpdateWatcher({ appPath = null, with1Password = false } = {}) {
   if (process.platform !== "darwin") {
     console.log("Note: LaunchAgent auto-update watcher is only supported on macOS.");
     return;
@@ -1206,6 +1165,9 @@ function installAutoUpdateWatcher({ appPath = null } = {}) {
   fs.mkdirSync(logDir, { recursive: true });
 
   const programArgs = [nodeBin, scriptToRun, "--if-unpatched"];
+  if (with1Password) {
+    programArgs.push("--with-1password");
+  }
   if (appPath) {
     programArgs.push("--app-path", resourcesDir);
   }
@@ -1246,7 +1208,7 @@ ${argsXml}
   } catch {}
   execFileSync("launchctl", ["load", LAUNCH_AGENT_PLIST], { stdio: "inherit" });
   console.log(`✅ Installed macOS LaunchAgent watcher: ${LAUNCH_AGENT_PLIST}`);
-  console.log(`   Whenever T3 Code updates ${appAsarPath}, zh-CN localization will be re-applied automatically!`);
+  console.log(`   Whenever T3 Code updates ${appAsarPath}, zh-CN localization will be verified & re-applied automatically!`);
 }
 
 function uninstallAutoUpdateWatcher() {
@@ -1270,11 +1232,17 @@ const opts = parseArgs(process.argv);
 if (opts.showHelp) {
   printHelp();
 } else if (opts.onlyIfUnpatched || opts.command === "--if-unpatched") {
-  await applyPatch({
-    appPath: opts.appPath,
-    onlyIfUnpatched: true,
-    with1Password: opts.with1Password
-  });
+  try {
+    await applyPatch({
+      appPath: opts.appPath,
+      onlyIfUnpatched: true,
+      with1Password: opts.with1Password
+    });
+  } catch (err) {
+    // Safe fail-open on background auto-update: keep unpatched official app.asar intact so T3 Code never breaks!
+    console.error(`[SAFE-ABORT] Auto-patch skipped to keep official T3 Code intact: ${err?.message || err}`);
+    process.exit(0);
+  }
 } else if (opts.command === "restore" || opts.command === "uninstall") {
   restoreBackup({ appPath: opts.appPath });
 } else if (opts.command === "status") {
@@ -1285,7 +1253,7 @@ if (opts.showHelp) {
     onlyIfUnpatched: false,
     with1Password: opts.with1Password
   });
-  installAutoUpdateWatcher({ appPath: opts.appPath });
+  installAutoUpdateWatcher({ appPath: opts.appPath, with1Password: opts.with1Password });
 } else if (opts.command === "uninstall-watcher") {
   uninstallAutoUpdateWatcher();
 } else if (opts.command === "apply") {

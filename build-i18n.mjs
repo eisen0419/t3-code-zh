@@ -11,6 +11,10 @@ const b3 = JSON.parse(fs.readFileSync(path.join(batchesDir, "zh_b3.json"), "utf8
 const b4 = JSON.parse(fs.readFileSync(path.join(batchesDir, "zh_b4.json"), "utf8"));
 const mainUtils = JSON.parse(fs.readFileSync(path.join(batchesDir, "zh_main_utils.json"), "utf8"));
 const tmpl4 = JSON.parse(fs.readFileSync(path.join(batchesDir, "zh_templates.json"), "utf8"));
+const v0111Path = path.join(batchesDir, "zh_v0111.json");
+const v0111 = fs.existsSync(v0111Path)
+  ? JSON.parse(fs.readFileSync(v0111Path, "utf8"))
+  : { exact: {}, templates: {} };
 
 // High-priority curated dictionary to ensure 100% consistent terminology across all primary navigation, settings, menus, and buttons
 const curatedExact = {
@@ -1518,10 +1522,125 @@ const curatedExact = {
   "The voice connection closed. Please record again.": "语音连接已断开，请重新录音。",
   "Could not connect to live transcription.": "无法连接到实时语音转写服务。",
   "Voice recordings are limited to five minutes.": "单次语音录音最长不超过 5 分钟。",
-  "Could not finish live transcription.": "无法完成实时语音转写。"
+  "Could not finish live transcription.": "无法完成实时语音转写。",
+
+  // --- v0.1.10 & v0.1.11 Curated Additions & Chinglish Fixes ---
+  "Thinking Level": "思考深度",
+  "Thinking level": "思考深度",
+  "Effort Level": "思考强度",
+  "Effort level": "思考强度",
+  "Reasoning Effort": "推理强度",
+  "Reasoning effort": "推理强度",
+  "Thinking Budget": "思考预算",
+  "Squash and merge": "压缩并合并",
+  "Rebase and merge": "变基并合并",
+  "Auto-merge (squash and merge)": "自动合并（压缩并合并）",
+  "Auto-merge (rebase and merge)": "自动合并（变基并合并）",
+  "Auto-merge (merge commit)": "自动合并（合并提交）",
+  "Auto-merge (fast-forward)": "自动合并（快进合并）",
+  "connection diagnostics": "连接诊断信息",
+  "update command": "更新命令",
+  "relaunch command": "重启命令",
+  "terminal selection": "终端选中内容",
+  "admin request": "管理员请求",
+  "branch name": "分支名称",
+  "failed message": "失败消息",
+  "pull request link": "拉取请求链接",
+  "Unable to link pull request": "无法关联拉取请求",
+  "Unable to unlink pull request": "无法取消关联拉取请求",
+  "Custom commit and pull request instructions for all selected environments": "所有所选环境共用的自定义提交与拉取请求说明",
+  "Clipboard API is unavailable while copying pull request link.": "复制拉取请求链接时剪贴板 API 不可用。",
+  "Failed to copy pull request link to the clipboard.": "无法将拉取请求链接复制到剪贴板。",
+  "Pull request routing preferences are unavailable on this client.": "此客户端暂不支持拉取请求路由偏好设置。",
+  "a linked environment": "已关联环境",
+  "this environment": "当前环境",
+  "a selected environment": "所选环境",
+  "the primary environment": "主环境",
+  "the workspace": "当前工作区",
+  "Delegated from a linked environment. Connect to it to open the parent thread.": "由已关联环境委派。连接到该环境即可打开父会话。",
+  "This connection cannot change projects in this environment.": "此连接无法修改当前环境中的项目。",
+  "This model is unavailable on a selected environment. Select that environment to choose its model separately.": "此模型在所选环境上不可用。请单独选择该环境以配置其模型。",
+  "This connection lacks permission to change settings on the primary environment.": "此连接无权修改主环境上的设置。",
+  "The account shorthand, sign-in address without https://, or ID that op account list shows.": "即 `op account list` 显示的账号简称、不含 https:// 的登录地址或账号 ID。",
+  "Additional CLI arguments passed to codex app-server on session start.": "会话启动时传递给 `codex app-server` 的额外命令行参数。",
+  "Path to the Muse Code binary on this environment. Sign in with muse login on that host.": "当前环境上 Muse Code 可执行文件的路径。请在该主机上运行 `muse login` 登录。",
+  "Additional CLI arguments passed to pi --mode rpc on session start.": "会话启动时传递给 `pi --mode rpc` 的额外命令行参数。",
+  "Run hermes mcp login t3code.": "请运行 `hermes mcp login t3code`。",
+  "The environment's server signs in to Expo and starts the sessions. Without a token here it uses EXPO_TOKEN, then its eas login.": "环境的服务器将登录 Expo 并启动会话。若此处未填写令牌，将优先使用 `EXPO_TOKEN`，其次使用其 `eas login` 登录状态。",
+  "Could not finish sign-in on this computer. Try again.": "无法在此电脑上完成登录，请重试。",
+  "OpenCode agent name": "OpenCode 智能体名称",
+  "Could not list ACP providers": "无法获取 ACP 提供商列表",
+  "Sensitive values are stored separately and never returned to the app. Enter a new value to rename a saved one or make it plain text.": "敏感值将独立存储且绝不会返回给应用。如需重命名已保存的值或改为明文，请输入新值。",
+  "This instance uses": "此实例使用",
+  "Shadow home path": "影子主目录路径",
+  "Account-specific home sharing the Codex state above.": "共享上方 Codex 状态的账号专属主目录。",
+  "This instance uses the shared Codex home directly.": "此实例直接使用共享的 Codex 主目录。",
+  "Codex shadow home path": "Codex 影子主目录路径",
+  "Not used": "未使用",
+  "No device has connected through T3 Connect yet.": "尚无设备通过 T3 Connect 连接。",
+  "link several environments": "关联多个环境",
+  "Link several…": "批量关联…",
+  "Link several environments": "关联多个环境",
+  "Machines": "设备主机",
+  "Machine": "设备主机",
+  "Checking which machines are already linked…": "正在检查哪些设备已关联…",
+  "Agents here can then launch, message and wait on threads there. It appears under Authorized clients in that environment's Sharing & access, where it can be revoked.": "配置后，当前环境的智能体即可在目标环境启动、发送消息并等待会话结果。该连接会显示在目标环境“共享与访问”的“已授权客户端”中，可随时撤销。",
+  "Sign-in refused": "登录被拒绝",
+  "The host refused this device's sign-in. Pair this address again with Add route.": "主机拒绝了此设备的登录请求。请通过“添加路由”重新配对该地址。",
+  "Require approval for new devices": "新设备连接需审批",
+  "The device has to be approved here before it can connect again.": "该设备必须先在此处获批后才能再次连接。",
+  "Reading device settings…": "正在读取设备设置…",
+  "Insufficient spend permission": "消费额度权限不足",
+  "Redirecting to Coinbase Wallet...": "正在跳转至 Coinbase Wallet...",
+  "Already available locally": "本地已就绪",
+  "Check account": "检查账号",
+  "Expo Simulators needs a paid Expo account. A session runs for up to 115 minutes and stops early when it is idle for the idle minutes, so idle minutes must be less than session minutes.": "Expo 模拟器需要付费 Expo 账号。单次会话最长运行 115 分钟，若连续空闲达到设定的空闲分钟数则会提前结束，因此空闲时长必须小于会话总时长。",
+  "Saving restarts this host and stops its running sessions.": "保存后将重启此主机并停止其正在运行的会话。",
+  "Issues": "议题",
+  "Closes this issue": "关闭此议题",
+  "Load older comments": "加载更早的评论",
+  "Nothing has happened here yet.": "此处暂无动态。",
+  "Assignee": "负责人",
+  "The labels could not be read": "无法读取标签列表",
+  "The people could not be read": "无法读取成员列表",
+  "No trackers to read": "暂无可读取的问题跟踪器",
+  "Nothing matches that.": "没有匹配的结果。",
+  "No issues under these filters.": "当前筛选条件下没有议题。",
+  "The page asks for a file.": "页面请求选择文件。",
+  "Forward to this machine, for any app here": "转发到此设备（供本机任意应用访问）",
+  "Then": "然后",
+  "Overview": "概览",
+  "Find on page": "在页面中查找",
+  "Enter a valid value. It was not saved.": "请输入有效的值，更改尚未保存。",
+  "Save current view…": "保存当前视图…",
+  "Update saved view": "更新已保存视图",
+  "Rename view…": "重命名视图…",
+  "Save your search, filters, and sort order on this device.": "在此设备上保存当前的搜索词、筛选条件与排序方式。",
+  "View name": "视图名称",
+  "System default follows your browser or OS language.": "“系统默认”将跟随您的浏览器或操作系统语言设置。",
+  "Saved with this theme and included when you export it. Web and desktop only. Rules that load remote files are ignored.": "随当前主题一并保存并在导出时包含（仅限网页端与桌面端；加载远程文件的规则将被忽略）。",
+  "Includes a 1.2 MB silence detector.": "包含 1.2 MB 的静音检测模型。",
+  "That microphone is unplugged. Pick another one.": "该麦克风已断开连接，请选择其他麦克风。",
+  "Voice settings": "语音设置",
+  "Speed: not benchmarked": "速度：暂无基准测试数据",
+  "CPU average": "CPU 平均占用",
+  "I/O reads": "I/O 读取",
+  "I/O writes": "I/O 写入",
+  "Span": "调用跨度",
+  "Stored on the server.": "保存在服务器端。",
+  "Offer when adding or publishing a project": "在添加或发布项目时提供此选项",
+  "save source control providers": "保存源代码管理提供商",
+  "Reaches every repository your Atlassian account can. Give it read and write access to repositories and pull requests, plus read:user:bitbucket and read:workspace:bitbucket.": "可访问您 Atlassian 账号权限范围内的所有仓库。请授予仓库和拉取请求的读写权限，以及 read:user:bitbucket 与 read:workspace:bitbucket 权限。",
+  "Save it to open in an app that supports this format files.": "请将其保存后使用支持此格式的应用打开。",
+  "Grok, Composer, and Auto use this allowance.": "Grok、Composer 与 Auto 共享此额度。",
+  "Usage allowance for third-party models such as Claude, GPT, and Gemini.": "Claude、GPT、Gemini 等第三方模型的用量额度。",
+  "This app has no address for a machine that another machine can reach. Enter its https or Tailscale address.": "当前应用没有可供其他设备访问的本机地址。请输入其 HTTPS 或 Tailscale 地址。",
+  "T3 Connect is on for this computer. Sign in to the app with the same account.": "此电脑已开启 T3 Connect。请使用同一账号登录应用。",
+  "· name set by the app": "· 名称由应用指定"
 };
 
-const exactMap = {
+const baseExactMap = {
+  ...v0111.exact,
   ...b4,
   ...b3,
   ...b2,
@@ -1530,16 +1649,11 @@ const exactMap = {
   ...curatedExact
 };
 
-// Remove identity mappings or empty mappings
-for (const [k, v] of Object.entries(exactMap)) {
-  if (!v || k === v || typeof v !== "string") {
-    delete exactMap[k];
-  }
-}
-
-const templateMap = {
+const baseTemplateMap = {
+  ...v0111.templates,
   ...tmpl4,
   ...mainUtils.templates,
+  "${} wants to continue in Base Account": "${} 请求使用 Base 账号继续",
   "Reset ${} to default": "将 ${} 重置为默认值",
   "Reconnect ${} to change its settings.": "重新连接 ${} 以更改其设置。",
   "${} requires a supporting environment. Choose one to continue.": "${} 需要支持该功能的环境。请选择一个环境以继续。",
@@ -1703,67 +1817,81 @@ const BANNED_TEMPLATES = new Set([
   "${} selected"
 ]);
 
-for (const k of BANNED_TEMPLATES) {
-  delete templateMap[k];
-}
-
-for (const [k, v] of Object.entries(templateMap)) {
-  if (!v || k === v || typeof v !== "string" || !k.includes("${}")) {
-    delete templateMap[k];
-  }
-}
-
-console.log("Merged exactMap entries:", Object.keys(exactMap).length);
-console.log("Merged templateMap entries:", Object.keys(templateMap).length);
-
-// Build template rules with prefix/suffix fast-path filters & literal-skeleton specificity
-const templateRules = [];
-for (const [tmpl, zhTmpl] of Object.entries(templateMap)) {
-  const parts = tmpl.split("${}");
-  // Must have at least one non-trivial literal part with letters
-  if (!parts.some(p => /[A-Za-z]{2,}/.test(p))) continue;
-  const escParts = parts.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  // Build regex: use (.+?) for internal placeholders and (.+) for trailing placeholder
-  let pattern = "^";
-  for (let i = 0; i < escParts.length; i++) {
-    pattern += escParts[i];
-    if (i < escParts.length - 1) {
-      pattern += (i === escParts.length - 2 && escParts[i + 1] === "") ? "(.+)" : "(.+?)";
+export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = {}) {
+  const exactMap = {
+    ...extraExact,
+    ...baseExactMap
+  };
+  for (const [k, v] of Object.entries(exactMap)) {
+    if (!v || k === v || typeof v !== "string") {
+      delete exactMap[k];
     }
   }
-  pattern += "$";
-  const prefix = parts[0] || "";
-  const suffix = parts[parts.length - 1] || "";
-  let longestLit = "";
-  let litLetters = 0;
-  for (const p of parts) {
-    if (p.length > longestLit.length) longestLit = p;
-    const m = p.match(/[A-Za-z]/g);
-    if (m) litLetters += m.length;
+
+  const templateMap = {
+    ...extraTemplates,
+    ...baseTemplateMap
+  };
+  for (const k of BANNED_TEMPLATES) {
+    delete templateMap[k];
   }
-  // Allow arbitrary free-text placeholders when template explicitly quotes "${}" / “${}” or is an explicit label-colon prefix
-  const hasQuotedSlot = /["'“‘`]\$\{\}["'”’`]/.test(tmpl) || /^(?:Actions|More actions|File options|Run Script|Unknown conditions?|Negate|Alias for|Add an alias for|Cancel|Confirm deregistration of|What can)\b/.test(tmpl);
-  templateRules.push({
-    p: pattern,
-    r: zhTmpl,
-    pre: prefix.slice(0, 12),
-    suf: suffix.slice(-12),
-    mid: longestLit,
-    lit: hasQuotedSlot ? 99 : litLetters
-  });
-}
+  for (const [k, v] of Object.entries(templateMap)) {
+    if (!v || k === v || typeof v !== "string" || !k.includes("${}")) {
+      delete templateMap[k];
+    }
+  }
 
-// Sort template rules by longest literal segment descending so more specific templates match first
-templateRules.sort((a, b) => b.mid.length - a.mid.length || b.lit - a.lit);
+  console.log("Merged exactMap entries:", Object.keys(exactMap).length);
+  console.log("Merged templateMap entries:", Object.keys(templateMap).length);
 
-console.log("Compiled templateRules:", templateRules.length);
+  // Build template rules with prefix/suffix fast-path filters & literal-skeleton specificity
+  const templateRules = [];
+  for (const [tmpl, zhTmpl] of Object.entries(templateMap)) {
+    const parts = tmpl.split("${}");
+    if (!parts.some(p => /[A-Za-z]{2,}/.test(p))) continue;
+    const escParts = parts.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    let pattern = "^";
+    for (let i = 0; i < escParts.length; i++) {
+      pattern += escParts[i];
+      if (i < escParts.length - 1) {
+        pattern += (i === escParts.length - 2 && escParts[i + 1] === "") ? "(.+)" : "(.+?)";
+      }
+    }
+    pattern += "$";
+    const prefix = parts[0] || "";
+    const suffix = parts[parts.length - 1] || "";
+    let longestLit = "";
+    let litLetters = 0;
+    for (const p of parts) {
+      if (p.length > longestLit.length) longestLit = p;
+      const m = p.match(/[A-Za-z]/g);
+      if (m) litLetters += m.length;
+    }
+    const hasQuotedSlot =
+      /["'“‘`]\$\{\}["'”’`]/.test(tmpl) ||
+      /^(?:Actions|More actions|File options|Run Script|Unknown conditions?|Negate|Alias for|Add an alias for|Cancel|Confirm deregistration of|What can)\b/.test(tmpl);
+    templateRules.push({
+      p: pattern,
+      r: zhTmpl,
+      pre: prefix.slice(0, 12),
+      suf: suffix.slice(-12),
+      mid: longestLit,
+      lit: litLetters,
+      q: hasQuotedSlot ? 1 : 0
+    });
+  }
 
-const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtime
+  templateRules.sort((a, b) => b.mid.length - a.mid.length || b.lit - a.lit);
+  console.log("Compiled templateRules:", templateRules.length);
+
+  return `// T3 Code Simplified Chinese (zh-CN) Localization Runtime
 (() => {
   if (globalThis.__t3I18nInitialized) return;
   globalThis.__t3I18nInitialized = true;
 
   const LOCALE_STORAGE_KEY = "t3code:locale";
+  const GT_BOOT_SYNC_KEY = "__t3code:gt-boot-synced";
+  const REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
 
   function getLocale() {
     try {
@@ -1771,6 +1899,21 @@ const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtim
       if (saved === "en" || saved === "zh-CN") return saved;
     } catch {}
     return "zh-CN";
+  }
+
+  async function syncNativeClientLanguage(targetZh) {
+    try {
+      const bridge = globalThis.desktopBridge;
+      if (!bridge?.getClientSettings || !bridge?.setClientSettings) return false;
+      const settings = await bridge.getClientSettings();
+      if (!settings || typeof settings !== "object") return false;
+      const desired = targetZh ? "zh" : "en";
+      if (settings.language === desired) return false;
+      await bridge.setClientSettings({ ...settings, language: desired });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function setLocale(nextLocale) {
@@ -1781,25 +1924,76 @@ const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtim
     try {
       globalThis.desktopBridge?.setUiLocale?.(normalized);
     } catch {}
-    if (typeof window !== "undefined" && window.location) {
-      window.location.reload();
-    }
+    syncNativeClientLanguage(normalized !== "en").finally(() => {
+      if (typeof window !== "undefined" && window.location) {
+        window.location.reload();
+      }
+    });
+  }
+
+  function toggleLocale() {
+    setLocale(getLocale() === "en" ? "zh-CN" : "en");
   }
 
   globalThis.__t3GetLocale = getLocale;
   globalThis.__t3SetLocale = setLocale;
 
-  // Sync initial locale to Electron main process on startup
+  // Bidirectional sync between T3 Code native language setting (v0.1.10+ gt-react) and t3code:locale
   try {
     if (typeof window !== "undefined") {
-      const initLocale = getLocale();
-      if (document?.documentElement) {
-        document.documentElement.lang = initLocale;
-      }
       window.addEventListener("DOMContentLoaded", () => {
         try {
           globalThis.desktopBridge?.setUiLocale?.(getLocale());
         } catch {}
+
+        // Initial check against T3 Code client-settings.json
+        (async () => {
+          try {
+            const bridge = globalThis.desktopBridge;
+            if (!bridge?.getClientSettings || !bridge?.setClientSettings) return;
+            const s = await bridge.getClientSettings();
+            if (!s || typeof s !== "object") return;
+            const cur = getLocale();
+            if (cur === "zh-CN" && (!s.language || s.language === "system")) {
+              if (!globalThis.sessionStorage?.getItem(GT_BOOT_SYNC_KEY)) {
+                globalThis.sessionStorage?.setItem(GT_BOOT_SYNC_KEY, "1");
+                await bridge.setClientSettings({ ...s, language: "zh" });
+                window.location.reload();
+                return;
+              }
+            } else if (s.language === "en" && cur !== "en") {
+              globalThis.localStorage?.setItem(LOCALE_STORAGE_KEY, "en");
+              bridge.setUiLocale?.("en");
+            } else if (s.language === "zh" && cur !== "zh-CN") {
+              globalThis.localStorage?.setItem(LOCALE_STORAGE_KEY, "zh-CN");
+              bridge.setUiLocale?.("zh-CN");
+            }
+          } catch {}
+        })();
+
+        // Watch <html lang="..."> updates driven by Settings -> General -> Display -> Language dropdown
+        if (document?.documentElement && typeof MutationObserver !== "undefined") {
+          const htmlObs = new MutationObserver(() => {
+            const htmlLang = document.documentElement.lang || "";
+            if (!htmlLang) return;
+            const bridge = globalThis.desktopBridge;
+            if (!bridge?.getClientSettings) return;
+            bridge.getClientSettings().then(s => {
+              if (!s || typeof s !== "object" || !s.language || s.language === "system") return;
+              const cur = getLocale();
+              if (s.language === "zh" && cur === "en") {
+                globalThis.localStorage?.setItem(LOCALE_STORAGE_KEY, "zh-CN");
+                bridge.setUiLocale?.("zh-CN");
+                window.location.reload();
+              } else if (s.language !== "zh" && cur === "zh-CN") {
+                globalThis.localStorage?.setItem(LOCALE_STORAGE_KEY, "en");
+                bridge.setUiLocale?.("en");
+                window.location.reload();
+              }
+            }).catch(() => {});
+          });
+          htmlObs.observe(document.documentElement, { attributes: true, attributeFilter: ["lang"] });
+        }
       }, { once: true });
     }
   } catch {}
@@ -1845,7 +2039,8 @@ const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtim
       pre: item.pre,
       suf: item.suf,
       mid: item.mid,
-      lit: item.lit
+      lit: item.lit,
+      q: item.q
     }));
     return compiledTemplates;
   }
@@ -1982,7 +2177,7 @@ const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtim
               continue;
             }
             const sub = isAnchoredSentence ? translateCore(val) : val;
-            if (sub !== val || isAnchoredSentence || isEntityLikeArg(val)) {
+            if (rule.q === 1 || sub !== val || isEntityLikeArg(val)) {
               renderedArgs[a - 1] = sub;
             } else {
               ok = false;
@@ -2095,9 +2290,23 @@ const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtim
       if (arr[0].startsWith("Pick languages to see models that support all of them.") && arr[2] === ".") {
         return ["选择语言即可筛选同时支持这些语言的模型。准确率以词错率或字错率衡量（越低越好）；速度为在 Handy 基准测试 ", arr[1], " 上转写 30 秒音频的耗时。"];
       }
+      if (arr[2] === "”") {
+        if (arr[0] === "Reading thread “") return ["正在读取会话“", arr[1], "”"];
+        if (arr[0] === "Read thread “") return ["已读取会话“", arr[1], "”"];
+        if (arr[0] === "Failed to read thread “") return ["读取会话“", arr[1], "”失败"];
+        if (arr[0] === "Declined to read thread “") return ["已拒绝读取会话“", arr[1], "”"];
+        if (arr[0] === "Stopped reading thread “") return ["已停止读取会话“", arr[1], "”"];
+      }
     }
     if (arr.length === 4 && arr[1] === " of " && arr[3] === " selected") {
       return ["已选择 ", arr[0], " / ", arr[2]];
+    }
+    // Never partially mutate array children that contain General Translation (<Var>/<Num>/etc.) markers
+    for (let i = 0; i < arr.length; i++) {
+      const el = arr[i];
+      if (el && typeof el === "object" && typeof el.type === "function" && typeof el.type._gtt === "string") {
+        return arr;
+      }
     }
     let changed = false;
     const out = new Array(arr.length);
@@ -2118,9 +2327,143 @@ const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtim
     return changed ? out : arr;
   }
 
-  function transformProps(type, props) {
-    if (!props || typeof props !== "object" || getLocale() === "en") return props;
-    const isSkipTag = typeof type === "string" && SKIP_TAGS.has(type);
+  function createReactEl(marker, type, key, props) {
+    return {
+      $$typeof: marker,
+      type,
+      key,
+      ref: null,
+      props
+    };
+  }
+
+  function injectLanguageControls(type, props, elementMarker) {
+    if (!elementMarker || !props || typeof props !== "object") return props;
+    const isEn = getLocale() === "en";
+
+    // 1. Settings top header bar prominent language switcher button (zero bundle regexes!)
+    if (
+      type === "header" &&
+      typeof props.className === "string" &&
+      props.className.includes("border-b") &&
+      Array.isArray(props.children) &&
+      typeof window !== "undefined" &&
+      window.location?.pathname?.startsWith("/settings")
+    ) {
+      const rightIdx = props.children.findIndex(
+        c => c && typeof c === "object" && c.type === "div" && typeof c.props?.className === "string" && c.props.className.includes("ms-auto")
+      );
+      if (rightIdx !== -1) {
+        const rightDiv = props.children[rightIdx];
+        const existingKids = Array.isArray(rightDiv.props.children)
+          ? rightDiv.props.children
+          : [rightDiv.props.children];
+        if (!existingKids.some(c => c && typeof c === "object" && c.key === "__t3-zh-lang-btn")) {
+          const btn = createReactEl(elementMarker, "button", "__t3-zh-lang-btn", {
+            id: "__t3-zh-lang-btn",
+            type: "button",
+            className:
+              "inline-flex h-6 items-center justify-center rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground hover:bg-accent cursor-pointer",
+            title: "切换界面语言 / Switch UI Language",
+            onClick: toggleLocale,
+            children: isEn ? "🌐 简体中文" : "🌐 English"
+          });
+          const nextRight = {
+            ...rightDiv,
+            props: {
+              ...rightDiv.props,
+              className: rightDiv.props.className.replace("gap-1", "gap-1.5"),
+              children: [btn, ...existingKids]
+            }
+          };
+          const nextHeaderKids = props.children.slice();
+          nextHeaderKids[rightIdx] = nextRight;
+          return { ...props, children: nextHeaderKids };
+        }
+      }
+    }
+
+    // 2. Sidebar footer 1-click [中/EN] icon button using live FooterButton component reference
+    if (type === REACT_FRAGMENT_TYPE && Array.isArray(props.children) && props.children.length >= 2) {
+      const first = props.children[0];
+      const last = props.children[props.children.length - 1];
+      const firstLabel = first?.props?.label;
+      const lastLabel = last?.props?.label;
+      if (
+        first &&
+        typeof first.type === "function" &&
+        (firstLabel === "Settings" || firstLabel === "设置") &&
+        last &&
+        (lastLabel === "Usage" || lastLabel === "用量") &&
+        !props.children.some(c => c && typeof c === "object" && c.key === "__t3-sidebar-lang-btn")
+      ) {
+        const iconSpan = createReactEl(elementMarker, "span", null, {
+          className: "text-[11px] font-bold leading-none tracking-tighter",
+          children: isEn ? "中" : "EN"
+        });
+        const footerLangBtn = createReactEl(elementMarker, first.type, "__t3-sidebar-lang-btn", {
+          icon: iconSpan,
+          label: isEn ? "切换为简体中文" : "Switch to English (切换语言)",
+          onClick: toggleLocale
+        });
+        return { ...props, children: [...props.children, footerLangBtn] };
+      }
+    }
+
+    // 3. Optional 1Password button in built-in browser toolbar (only when --with-1password enabled)
+    if (
+      globalThis.__t3Enable1PasswordToolbar &&
+      type === "form" &&
+      props["data-surface-subheader"] === true &&
+      Array.isArray(props.children) &&
+      props.children.length >= 4 &&
+      !props.children.some(c => c && typeof c === "object" && c.key === "__t3-1password-btn")
+    ) {
+      const svgEl = createReactEl(elementMarker, "svg", null, {
+        viewBox: "0 0 24 24",
+        fill: "none",
+        className: "size-4",
+        children: [
+          createReactEl(elementMarker, "circle", "c1", { cx: "12", cy: "12", r: "10", fill: "#0A85EA" }),
+          createReactEl(elementMarker, "circle", "c2", { cx: "12", cy: "12", r: "7.3", stroke: "#FFFFFF", strokeWidth: "1.6" }),
+          createReactEl(elementMarker, "rect", "r1", { x: "10.7", y: "7.2", width: "2.6", height: "4", rx: "1.1", fill: "#FFFFFF" }),
+          createReactEl(elementMarker, "path", "p1", { d: "M10.9 12.2H13.1L13.5 16.5H10.5L10.9 12.2Z", fill: "#FFFFFF" })
+        ]
+      });
+      const opBtn = createReactEl(elementMarker, "button", "__t3-1password-btn", {
+        type: "button",
+        "aria-label": "1Password",
+        "data-t3-1password-toolbar-btn": true,
+        title: isEn ? "1Password Autofill (⌘\\\\)" : "1Password 自动填充 (⌘\\\\)",
+        className: "inline-flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-accent cursor-pointer",
+        onClick: () => {
+          globalThis.desktopBridge?.toggle1PasswordPopup?.().then(r => {
+            if (!r || !r.sentToWebview) globalThis.__t3ToggleMain1PasswordPopup?.();
+          });
+        },
+        children: svgEl
+      });
+      const nextKids = props.children.slice();
+      nextKids.splice(3, 0, opBtn);
+      return { ...props, children: nextKids };
+    }
+
+    return props;
+  }
+
+  function transformProps(type, rawProps, elementMarker) {
+    if (!rawProps || typeof rawProps !== "object") return rawProps;
+    const props = injectLanguageControls(type, rawProps, elementMarker);
+    if (getLocale() === "en") return props;
+
+    // Respect T3 Code's native gt-react <T> / <Var> components (type._gtt) so source-children hashes never break!
+    const isGtComponent = typeof type === "function" && typeof type._gtt === "string";
+    const isNativeGtZhLoaded =
+      typeof document !== "undefined" && document.documentElement?.lang === "zh";
+
+    const isSkipTag =
+      (typeof type === "string" && SKIP_TAGS.has(type)) ||
+      (isGtComponent && isNativeGtZhLoaded);
     let cloned = null;
 
     // 1. Translate children
@@ -2138,7 +2481,7 @@ const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtim
             cloned = { ...props, children: t };
           }
         }
-      } else if (Array.isArray(ch)) {
+      } else if (Array.isArray(ch) && !isGtComponent) {
         if (ch.length === 2 && ch[1] === "Input" && typeof props.className === "string" && props.className.includes("text-indigo-600")) {
           cloned = { ...props, children: [ch[0], "待输入"] };
         } else {
@@ -2227,8 +2570,10 @@ const runtimeSource = `// T3 Code Simplified Chinese (zh-CN) Localization Runtim
   } catch {}
 })();
 `;
+}
 
-export function buildI18nBundle(customOutPath) {
+export function buildI18nBundle(customOutPath, extraOptions = {}) {
+  const runtimeSource = compileRuntimeSource(extraOptions);
   const outPath = customOutPath || path.join(__dirname, "dist", "zh-cn-i18n.js");
   try {
     fs.mkdirSync(path.dirname(outPath), { recursive: true });

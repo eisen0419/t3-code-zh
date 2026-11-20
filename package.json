@@ -1,6 +1,6 @@
 {
   "name": "t3-code-zh",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "description": "One-click Simplified Chinese (zh-CN) localization CLI & AI Agent Skill for T3 Code desktop app (一键汉化 T3 Code)",
   "license": "MIT",
   "repository": {
@@ -24,6 +24,7 @@
     "locales/",
     "dist/zh-cn-i18n.js",
     "scripts/audit-untranslated.mjs",
+    "scripts/verify-patch.mjs",
     "assets/",
     "SKILL.md",
     "README.md",
@@ -38,7 +39,8 @@
     "install-watcher": "node ./patch-t3-zh.mjs install-watcher",
     "uninstall-watcher": "node ./patch-t3-zh.mjs uninstall-watcher",
     "audit": "node ./scripts/audit-untranslated.mjs",
-    "prepublishOnly": "node ./build-i18n.mjs"
+    "test": "node ./scripts/verify-patch.mjs",
+    "prepublishOnly": "node ./scripts/verify-patch.mjs"
   },
   "keywords": [
     "t3-code",

@@ -39,15 +39,16 @@ When the user reports untranslated English text or a mangled translation after a
    ```bash
    node <skill-dir>/scripts/audit-untranslated.mjs --filter <keyword>
    ```
-    Note: T3 Code's Rolldown bundler emits many static UI strings as backtick literals (`` `...` ``) alongside `"..."` and `'...'`; `audit-untranslated.mjs` scans all three forms from `app.asar.bak` / `app.asar`.
-2. **Add translations in `build-i18n.mjs`**:
+   Note: T3 Code v0.1.10+ includes an upstream `@generaltranslation/react-core` (`gt-react`) catalog (`en-*.js` / `zh-*.js`), which `patch-t3-zh.mjs` automatically absorbs at patch time and protects via `type._gtt` hash preservation. Unwrapped strings, dynamic model options, and split JSX arrays are handled by `build-i18n.mjs`.
+2. **Add translations in `build-i18n.mjs` (never regex-patch minified feature bundles)**:
+   - **Architecture guardrail**: Keep all UI injections inside `zh-cn-i18n.js` (`transformProps` using `elementMarker` or native HTML tags). Never scrape minified component identifiers across scopes in `patch-t3-zh.mjs`.
    - **Static strings**: add to `curatedExact` in `build-i18n.mjs` (overrides `locales/*.json`).
-   - **Dynamic single-placeholder or multi-placeholder strings**: add to `templateMap` in `build-i18n.mjs` using `${}` (sequential) or `${1}` / `${2}` (reordered). Keep literal anchors specific (>= 2 words) so short templates never match arbitrary English prose.
-   - **Split JSX child arrays** (e.g. `["Connect to ", <Badge/>, " to continue."]`) or **context-dependent labels** (e.g. sidebar status pill `"Input"` vs section heading `"Input"`): handle in `translateChildrenArray` or `transformProps` inside `build-i18n.mjs`.
-3. **Rebuild, repatch, and verify**:
+   - **Dynamic single-placeholder or multi-placeholder strings**: add to `baseTemplateMap` in `build-i18n.mjs` using `${}` (sequential) or `${1}` / `${2}` (reordered). Keep literal anchors specific (>= 2 words).
+   - **Split JSX child arrays** or **context-dependent labels**: handle in `translateChildrenArray` or `transformProps` inside `build-i18n.mjs`.
+3. **Rebuild, repatch, and run the automated regression suite**:
    ```bash
    node <skill-dir>/patch-t3-zh.mjs apply
-   node <skill-dir>/scripts/audit-untranslated.mjs --filter <keyword>
+   node <skill-dir>/scripts/verify-patch.mjs
    ```
 
-**Completion criterion**: Every reported UI string translates cleanly with `0` `CJK-space-CJK` anomalies and `0` half-translated Chinglish outputs, and `app.asar` is freshly patched.
+**Completion criterion**: `scripts/verify-patch.mjs` exits `0` (`0` V8 syntax errors, `0` `CJK-space-CJK` anomalies, `0` half-translated Chinglish strings), and `app.asar` is freshly patched.

@@ -63,6 +63,7 @@ const untranslatedByFile = new Map();
 
 for (const [name, meta] of Object.entries(assets)) {
   if (!name.endsWith(".js") || name === "zh-cn-i18n.js") continue;
+  if (/^(?:de|en|es|fr|ja|ko|pt-BR|ru|sv|zh)-[A-Za-z0-9_-]+\.js$/.test(name)) continue;
   if (filter && !name.toLowerCase().includes(filter.toLowerCase())) continue;
 
   const off = dataOffset + Number(meta.offset);
