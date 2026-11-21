@@ -67,11 +67,41 @@ const expectedPairs = [
   ["Delegated from a linked environment. Connect to it to open the parent thread.", "由已关联环境委派。连接到该环境即可打开父会话。"],
   ["Closes this issue", "关闭此议题"],
   ["Link several environments", "关联多个环境"],
-  ["Speed: not benchmarked", "速度：暂无基准测试数据"]
+  ["Speed: not benchmarked", "速度：暂无基准测试数据"],
+  ["New thread on main", "在 main 上新建对话"],
+  ["Filter by ARTEX", "按 ARTEX 筛选"],
+  ["Auto-settle behavior", "自动归置行为"],
+  ["In 1 hour (13:24)", "1 小时后 (13:24)"],
+  ["In 3 hours (15:24)", "3 小时后 (15:24)"],
+  ["This evening (18:00)", "今天晚上 (18:00)"],
+  ["Tomorrow (09:00)", "明天 (09:00)"],
+  ["Next week (Mon 09:00)", "下周 (周一 09:00)"],
+  ["Custom...", "自定义..."],
+  ["(1 row)", "(1 行)"]
 ];
 for (const [src, exp] of expectedPairs) {
   assert.equal(tr(src), exp, `Translation mismatch for "${src}"`);
 }
+
+// 3a-2. Verify context menu items & nested snooze submenu detail translation
+const menuOut = globalThis.__t3TrMenuItems([
+  { id: "new-thread-on-branch", label: "New thread on main" },
+  {
+    id: "snooze",
+    label: "Snooze",
+    children: [
+      { id: "snooze:1h", label: "In 1 hour", detail: "13:24" },
+      { id: "snooze:next-week", label: "Next week", detail: "Mon 09:00" },
+      { id: "snooze:custom", label: "Custom..." }
+    ]
+  }
+]);
+assert.equal(menuOut[0].label, "在 main 上新建对话");
+assert.equal(menuOut[1].label, "暂缓");
+assert.equal(menuOut[1].children[0].label, "1 小时后");
+assert.equal(menuOut[1].children[1].label, "下周");
+assert.equal(menuOut[1].children[1].detail, "周一 09:00");
+assert.equal(menuOut[1].children[2].label, "自定义...");
 
 // 3b. Context-sensitive sidebar status pill vs plain "Input" heading
 const pillProps = tp(

@@ -1636,7 +1636,29 @@ const curatedExact = {
   "Usage allowance for third-party models such as Claude, GPT, and Gemini.": "Claude、GPT、Gemini 等第三方模型的用量额度。",
   "This app has no address for a machine that another machine can reach. Enter its https or Tailscale address.": "当前应用没有可供其他设备访问的本机地址。请输入其 HTTPS 或 Tailscale 地址。",
   "T3 Connect is on for this computer. Sign in to the app with the same account.": "此电脑已开启 T3 Connect。请使用同一账号登录应用。",
-  "· name set by the app": "· 名称由应用指定"
+  "· name set by the app": "· 名称由应用指定",
+  "Custom...": "自定义...",
+  "Custom…": "自定义…",
+  "In 1 hour": "1 小时后",
+  "In 2 hours": "2 小时后",
+  "In 3 hours": "3 小时后",
+  "In 4 hours": "4 小时后",
+  "This evening": "今天晚上",
+  "Tonight": "今晚",
+  "Follow settings": "跟随设置",
+  "Auto-settle behavior": "自动归置行为",
+  "Wake thread": "唤醒对话",
+  "Un-settle thread": "取消归置对话",
+  "Settle thread": "归置对话",
+  "Turn into project": "转为独立项目",
+  "Share with guest": "分享给访客",
+  "Copy mention": "复制 @引用",
+  "Add to chat": "添加到对话",
+  "Open in file viewer": "在文件查看器中打开",
+  "Preview media": "预览媒体文件",
+  "Close others": "关闭其他标签页",
+  "Close to the right": "关闭右侧标签页",
+  "Close all": "关闭全部标签页"
 };
 
 const baseExactMap = {
@@ -1653,6 +1675,10 @@ const baseTemplateMap = {
   ...v0111.templates,
   ...tmpl4,
   ...mainUtils.templates,
+  "New thread on ${}": "在 ${} 上新建对话",
+  "Filter by ${}": "按 ${} 筛选",
+  "Open on ${}": "在 ${} 上打开",
+  "Could not open in ${}": "无法在 ${} 中打开",
   "${} wants to continue in Base Account": "${} 请求使用 Base 账号继续",
   "Reset ${} to default": "将 ${} 重置为默认值",
   "Reconnect ${} to change its settings.": "重新连接 ${} 以更改其设置。",
@@ -1869,7 +1895,7 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
     }
     const hasQuotedSlot =
       /["'“‘`]\$\{\}["'”’`]/.test(tmpl) ||
-      /^(?:Actions|More actions|File options|Run Script|Unknown conditions?|Negate|Alias for|Add an alias for|Cancel|Confirm deregistration of|What can)\b/.test(tmpl);
+      /^(?:Actions|More actions|File options|Run Script|Unknown conditions?|Negate|Alias for|Add an alias for|Cancel|Confirm deregistration of|What can|New thread on|Filter by|Open on|Could not open in)\b/.test(tmpl);
     templateRules.push({
       p: pattern,
       r: zhTmpl,
@@ -2134,6 +2160,16 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
       else if ((m = /^(\\d[\\d,.]*)\\s+hours?$/i.exec(core))) res = m[1] + " 小时";
       else if ((m = /^(\\d[\\d,.]*)\\s+minutes?$/i.exec(core))) res = m[1] + " 分钟";
       else if ((m = /^(\\d[\\d,.]*)\\s+seconds?$/i.exec(core))) res = m[1] + " 秒";
+      else if ((m = /^(\\d[\\d,.]*)\\s+rows?$/i.exec(core))) res = m[1] + " 行";
+      else if ((m = /^\\((\\d[\\d,.]*)\\s+rows?\\)$/i.exec(core))) res = "(" + m[1] + " 行)";
+      else if ((m = /^In\\s+(\\d+)\\s+minutes?$/i.exec(core))) res = m[1] + " 分钟后";
+      else if ((m = /^In\\s+(\\d+)\\s+hours?$/i.exec(core))) res = m[1] + " 小时后";
+      else if ((m = /^In\\s+(\\d+)\\s+hours?\\s*\\(([^)]+)\\)$/i.exec(core))) res = m[1] + " 小时后 (" + translateCore(m[2]) + ")";
+      else if ((m = /^(This evening|Tonight|Tomorrow|Next week)\\s*\\(([^)]+)\\)$/i.exec(core))) res = translateCore(m[1]) + " (" + translateCore(m[2]) + ")";
+      else if ((m = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\\s+(\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)$/i.exec(core))) {
+        const dayMap = { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五", sat: "周六", sun: "周日" };
+        res = (dayMap[m[1].toLowerCase()] || m[1]) + " " + m[2];
+      }
       else if ((m = /^(\\d[\\d,.]*)\\s+selected$/i.exec(core))) res = "已选择 " + m[1] + " 项";
       else if ((m = /^(\\d+)\\s+of\\s+(\\d+)\\s+selected$/i.exec(core))) res = "已选择 " + m[1] + " / " + m[2] + " 项";
       else if ((m = /^Turn\\s+(\\d+)$/.exec(core))) res = "第 " + m[1] + " 轮";
@@ -2220,8 +2256,14 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
       if (typeof next.label === "string") {
         next.label = translateCore(next.label);
       }
+      if (typeof next.detail === "string") {
+        next.detail = translateCore(next.detail);
+      }
       if (Array.isArray(next.children)) {
         next.children = trMenuItems(next.children);
+      }
+      if (Array.isArray(next.submenu)) {
+        next.submenu = trMenuItems(next.submenu);
       }
       return next;
     });

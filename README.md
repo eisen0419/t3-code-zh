@@ -45,7 +45,7 @@ npx github:eisen0419/t3-code-zh
 > node patch-t3-zh.mjs
 > ```
 
-执行完成后，在已打开的 T3 Code 窗口按下 **`⌘R`**（macOS）或 **`Ctrl+R`**（Windows / Linux）即可立即看到中文界面！
+执行完成后，如 T3 Code 正在运行，请按 **`⌘Q`**（macOS）或 **`Alt+F4`**（Windows / Linux）**完全退出并重新打开一次 T3 Code**，使内置后台服务进程与系统原生菜单加载新的 `app.asar`！
 
 ### 2. 开启「客户端更新自动保持汉化」（macOS 推荐）
 

@@ -29,7 +29,7 @@ Run `node <skill-dir>/patch-t3-zh.mjs <command>` according to user intent:
   ```
 - **Custom install location**: pass `--app-path "/path/to/T3 Code.app"` (or the directory containing `app.asar`).
 
-**Completion criterion**: `patch-t3-zh.mjs` exits `0` and prints `✅`. Tell the user to press `⌘R` (macOS) or `Ctrl+R` (Windows/Linux) inside T3 Code to reload the UI immediately.
+**Completion criterion**: `patch-t3-zh.mjs` exits `0` and prints `✅`. Tell the user to quit (`⌘Q` on macOS / `Alt+F4` on Windows & Linux) and reopen T3 Code once so the background server process and Electron main-process menus load the new `app.asar` inode.
 
 ## 2. Evolve Translations for New T3 Code Releases or Screenshots
 

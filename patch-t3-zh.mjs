@@ -660,12 +660,60 @@ function buildMainProcessI18nHelper({ enable1Password = false } = {}) {
     "Zoom Out": "缩小",
     "No suggestions": "无拼写建议",
     "Copy Link": "复制链接",
+    "Copy link": "复制链接",
+    "Copy URL": "复制链接",
     "Copy Email Address": "复制电子邮件地址",
     "Copy Image": "复制图像",
+    "Copy image": "复制图片",
+    "Save image": "保存图片",
+    "Save video": "保存视频",
+    "Preview media": "预览媒体文件",
+    "Open in file viewer": "在文件查看器中打开",
     "Open in integrated browser": "在内置浏览器中打开",
     "Open in system browser": "在系统浏览器中打开",
+    "Open on host": "在托管平台上打开",
     "Link to thread": "关联到当前对话",
     "Unlink from thread": "取消关联此对话",
+    "New thread": "新建对话",
+    "Find in thread": "在对话中查找",
+    "Pin thread": "置顶对话",
+    "Unpin thread": "取消置顶对话",
+    "Pin project": "置顶项目",
+    "Unpin project": "取消置顶项目",
+    "Settle thread": "归置对话",
+    "Un-settle thread": "取消归置对话",
+    "Snooze": "暂缓",
+    "Wake thread": "唤醒对话",
+    "Rename thread": "重命名对话",
+    "Regenerate title": "重新生成标题",
+    "Regenerating…": "正在生成…",
+    "Mark unread": "标记为未读",
+    "Share with guest": "分享给访客",
+    "Show all projects": "显示全部项目",
+    "Turn into project": "转为独立项目",
+    "Auto-settle behavior": "自动归置行为",
+    "Follow settings": "跟随设置",
+    "Never": "从不",
+    "Copy": "复制",
+    "Copy path": "复制路径",
+    "Copy relative path": "复制相对路径",
+    "Copy full path": "复制完整路径",
+    "Copy mention": "复制 @引用",
+    "Add to chat": "添加到对话",
+    "Path": "路径",
+    "Branch": "分支",
+    "Thread": "对话内容",
+    "Thread ID": "对话 ID",
+    "Project settings": "项目设置",
+    "Archive thread": "归档对话",
+    "Delete": "删除",
+    "Discard": "放弃更改",
+    "Custom...": "自定义...",
+    "Custom…": "自定义…",
+    "Close": "关闭",
+    "Close others": "关闭其他标签页",
+    "Close to the right": "关闭右侧标签页",
+    "Close all": "关闭全部标签页",
     "OK": "确定",
     "Cancel": "取消",
     "Open": "打开",
@@ -680,6 +728,13 @@ function buildMainProcessI18nHelper({ enable1Password = false } = {}) {
     "An unknown error occurred. Please try again later.": "发生未知错误，请稍后重试。"
   };
 
+  const MAIN_DAY_MAP = { mon: "周一", tue: "周二", wed: "周三", thu: "周四", fri: "周五", sat: "周六", sun: "周日" };
+  function trWhenDetail(d) {
+    const dm = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\\s+(.+)$/i.exec(d);
+    if (dm) return (MAIN_DAY_MAP[dm[1].toLowerCase()] || dm[1]) + " " + dm[2];
+    return d;
+  }
+
   function trMainString(str) {
     if (getMainLocale() === "en" || typeof str !== "string" || !str) return str;
     if (MENU_LABELS_ZH[str]) return MENU_LABELS_ZH[str];
@@ -687,6 +742,21 @@ function buildMainProcessI18nHelper({ enable1Password = false } = {}) {
     if ((m = /^About (.+)$/.exec(str))) return "关于 " + m[1];
     if ((m = /^Hide (.+)$/.exec(str))) return "隐藏 " + m[1];
     if ((m = /^Quit (.+)$/.exec(str))) return "退出 " + m[1];
+    if ((m = /^New thread on (.+)$/.exec(str))) return "在 " + m[1] + " 上新建对话";
+    if ((m = /^Filter by (.+)$/.exec(str))) return "按 " + m[1] + " 筛选";
+    if ((m = /^Open on (.+)$/.exec(str))) return "在 " + m[1] + " 上打开";
+    if ((m = /^Settle \\((\\d+)\\)$/.exec(str))) return "归置 (" + m[1] + ")";
+    if ((m = /^Snooze \\((\\d+)\\)$/.exec(str))) return "暂缓 (" + m[1] + ")";
+    if ((m = /^In (\\d+) minutes?(?: \\(([^)]+)\\))?$/i.exec(str))) {
+      return m[1] + " 分钟后" + (m[2] ? " (" + trWhenDetail(m[2]) + ")" : "");
+    }
+    if ((m = /^In (\\d+) hours?(?: \\(([^)]+)\\))?$/i.exec(str))) {
+      return m[1] + " 小时后" + (m[2] ? " (" + trWhenDetail(m[2]) + ")" : "");
+    }
+    if ((m = /^(This evening|Tonight|Tomorrow|Next week) \\(([^)]+)\\)$/i.exec(str))) {
+      const baseMap = { "this evening": "今天晚上", "tonight": "今晚", "tomorrow": "明天", "next week": "下周" };
+      return (baseMap[m[1].toLowerCase()] || m[1]) + " (" + trWhenDetail(m[2]) + ")";
+    }
     if ((m = /^T3 Code (.+) is currently the newest version available\\.$/.exec(str))) {
       return "T3 Code " + m[1] + " 已是当前可用的最新版本。";
     }
@@ -771,6 +841,26 @@ ${onePasswordBridgeSection}
 })();
 // --- End T3 Code Simplified Chinese Main Process I18n ---
 `;
+}
+
+function syncDefaultClientSettingsLocale(targetLang) {
+  const csPath = path.join(os.homedir(), ".t3", "userdata", "client-settings.json");
+  try {
+    if (!fs.existsSync(csPath)) return;
+    const data = JSON.parse(fs.readFileSync(csPath, "utf8"));
+    if (!data || typeof data !== "object") return;
+    if (targetLang === "zh") {
+      // Initialize native T3 Code v0.1.10+ language setting when unset/system so native menus & GT catalog start in Chinese
+      if (!data.language || data.language === "system") {
+        data.language = "zh";
+        fs.writeFileSync(csPath, JSON.stringify(data), "utf8");
+        console.log("Synced ~/.t3/userdata/client-settings.json -> language: \"zh\"");
+      }
+    } else if (targetLang === "en" && data.language === "zh") {
+      data.language = "en";
+      fs.writeFileSync(csPath, JSON.stringify(data), "utf8");
+    }
+  } catch {}
 }
 
 function clearCaches() {
@@ -1066,13 +1156,14 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
     }
 
     fs.renameSync(tmpAsarPath, appAsarPath);
+    syncDefaultClientSettingsLocale("zh");
     clearCaches();
     console.log(
       `\n✅ Successfully patched T3 Code (v${currentVersion}) with Simplified Chinese (zh-CN) localization!`
     );
     console.log(`   Verified ${modifiedFiles.size} patched bundles with V8 syntax gate (0 warnings).`);
     console.log(`   Target: ${appAsarPath}`);
-    console.log(`   Tip: Press Cmd+R (macOS) or Ctrl+R (Win/Linux) inside T3 Code to reload immediately.`);
+    console.log(`   Tip: Quit (Cmd+Q / Alt+F4) and reopen T3 Code once so the background server & native menus load the new app.asar.`);
   } catch (err) {
     if (fs.existsSync(tmpAsarPath)) {
       try {
@@ -1098,6 +1189,7 @@ function restoreBackup({ appPath = null } = {}) {
     uninstallAutoUpdateWatcher();
   }
   fs.copyFileSync(backupAsarPath, appAsarPath);
+  syncDefaultClientSettingsLocale("en");
   clearCaches();
   console.log(`✅ Restored original English T3 Code from ${backupAsarPath}`);
 }
