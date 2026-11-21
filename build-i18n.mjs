@@ -1658,7 +1658,44 @@ const curatedExact = {
   "Preview media": "预览媒体文件",
   "Close others": "关闭其他标签页",
   "Close to the right": "关闭右侧标签页",
-  "Close all": "关闭全部标签页"
+  "Close all": "关闭全部标签页",
+  "Open with": "打开方式",
+  "Discard draft": "丢弃草稿",
+  "Code from the Antigravity page": "来自 Antigravity 页面的授权码",
+  "Claude API Key": "Claude API 密钥",
+  "Kiro account": "Kiro 账号",
+  "Grok account": "Grok 账号",
+  "Weekly reset": "每周重置",
+  "Fable reset": "Fable 额度重置",
+  "Full reset": "完全重置",
+  "change request": "变更请求",
+  "Close permission helper": "关闭权限助手",
+  "↑ Drag T3 Code into the list above": "↑ 将 T3 Code 拖入上方列表中",
+  "Drag T3 Code to System Settings, or click to reveal in Finder": "将 T3 Code 拖入系统设置，或点击在访达中显示",
+  "Unnamed passkey": "未命名通行密钥",
+  "No trusted authority issued this certificate.": "此证书并非由受信任的证书颁发机构签发。",
+  "This certificate is not for this address.": "此证书与当前访问地址不匹配。",
+  "This certificate has expired or is not valid yet.": "此证书已过期或尚未生效。",
+  "Trust and Remember": "信任并记住",
+  "Trust it only if you know this certificate belongs to the site. Clearing this browser profile's cookies forgets it.": "请仅在确认此证书属于该网站时选择信任。清除此浏览器配置的 Cookie 将取消信任记忆。",
+  "T3 Code could not save this approval, so the page stays blocked. Check that the disk is not full and its data folder is writable, then try again.": "T3 Code 无法保存此信任授权，页面仍处于拦截状态。请检查磁盘空间未满且数据目录可写后重试。",
+  "Browser preview": "浏览器预览",
+  "WSL backend is still unavailable": "WSL 后端仍不可用",
+  "T3 Code will use the Windows backend for this launch and retry WSL the next time the app starts.": "本次启动将改用 Windows 后端，并在下次启动时重新尝试连接 WSL。",
+  "WSL backend couldn't start": "无法启动 WSL 后端",
+  "Falling back to the Windows backend so T3 Code can open. Re-enable the WSL backend from Settings > Sharing & access once the WSL distro is fixed.": "已回退至 Windows 后端以确保 T3 Code 正常打开。修复 WSL 发行版后，可在“设置 > 共享与访问”中重新启用 WSL 后端。",
+  "This T3 home is unavailable": "此 T3 主目录不可用",
+  "Desktop config": "桌面端配置",
+  "A new version of T3 Code is available.": "发现新版本 T3 Code。",
+  "A new version of T3 Code is already downloading.": "新版本 T3 Code 正在下载中。",
+  "A new version of T3 Code is ready to install.": "新版本 T3 Code 已准备就绪，可供安装。",
+  "T3 Code will restart to install it. Any running tasks will be interrupted.": "T3 Code 将重启以完成安装，正在运行的任务将被中断。",
+  "Checking for a newer version…": "正在检查新版本…",
+  "Get a different version from the releases page.": "从版本发布页面获取其他版本。",
+  "Open releases": "打开发布页面",
+  "Your organization's managed policy stopped T3 Code from starting. Send the details below to your IT administrator.": "您所在组织的托管策略阻止了 T3 Code 启动。请将下方详情发送给 IT 管理员。",
+  "The server wrote no output.": "服务端未输出任何日志。",
+  "T3 Code failed to start": "T3 Code 启动失败"
 };
 
 const baseExactMap = {
@@ -1895,7 +1932,7 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
     }
     const hasQuotedSlot =
       /["'“‘`]\$\{\}["'”’`]/.test(tmpl) ||
-      /^(?:Actions|More actions|File options|Run Script|Unknown conditions?|Negate|Alias for|Add an alias for|Cancel|Confirm deregistration of|What can|New thread on|Filter by|Open on|Could not open in)\b/.test(tmpl);
+      /^(?:Actions|More actions|File options|Run Script|Unknown conditions?|Negate|Alias for|Add an alias for|Cancel|Confirm deregistration of|What can|New thread on|Filter by|Open on|Could not open in|Branch:|Push to|Checks:|Searched|Cloning|Running|Editing|Forget|Unmute|Authenticated ·|Not authenticated ·)/.test(tmpl);
     templateRules.push({
       p: pattern,
       r: zhTmpl,
@@ -2213,7 +2250,9 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
               continue;
             }
             const sub = isAnchoredSentence ? translateCore(val) : val;
-            if (rule.q === 1 || sub !== val || isEntityLikeArg(val)) {
+            const isSingleIdentifierToken =
+              rule.lit >= 11 && !/\\s/.test(val) && !STOPWORD_ARGS.has(val.toLowerCase());
+            if (rule.q === 1 || sub !== val || isEntityLikeArg(val) || isSingleIdentifierToken) {
               renderedArgs[a - 1] = sub;
             } else {
               ok = false;
@@ -2272,6 +2311,17 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
 
   // Skip code/pre/style/script tags and sensitive label comparisons
   const SKIP_TAGS = new Set(["code", "pre", "style", "script", "kbd"]);
+  // Source strings left untranslated inside T3 Code's official zh catalog that our EXACT map covers
+  const GT_UNTRANSLATED_SOURCE = new Set([
+    "Branch",
+    "Link",
+    "Span",
+    "API token",
+    "Git URL",
+    "change request",
+    "Whoosh",
+    "Whoosh "
+  ]);
   const PROTECTED_LABELS = new Set(["Browser", "Fast", "Ultrafast", "Commit", "Push"]);
   const TRANSLATABLE_PROPS = [
     "title",
@@ -2503,9 +2553,11 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
     const isNativeGtZhLoaded =
       typeof document !== "undefined" && document.documentElement?.lang === "zh";
 
+    const isGtUntranslatedFallback =
+      isGtComponent && typeof props.children === "string" && GT_UNTRANSLATED_SOURCE.has(props.children);
     const isSkipTag =
       (typeof type === "string" && SKIP_TAGS.has(type)) ||
-      (isGtComponent && isNativeGtZhLoaded);
+      (isGtComponent && isNativeGtZhLoaded && !isGtUntranslatedFallback);
     let cloned = null;
 
     // 1. Translate children

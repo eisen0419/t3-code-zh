@@ -284,22 +284,20 @@ function extractUpstreamGtCatalog(srcFd, dataOffset, header) {
         // Skip lowercase space-separated search-index keyword lists (never rendered as UI text)
         if (/^[a-z0-9 ./+-]+$/.test(enVal) && enVal.split(" ").length >= 4) continue;
         extraExact[enVal] = zhVal;
-      } else if (
-        !enVal.includes(", plural,") &&
-        !enVal.includes(", select,") &&
-        /^\{?[A-Za-z0-9_.,:;?! '"“”‘’()/+-]+\}?$/.test(enVal.replace(/\{[A-Za-z0-9_]+\}/g, "X"))
-      ) {
+      } else if (!enVal.includes(", plural,") && !enVal.includes(", select,")) {
+        const stripped = enVal.replace(/\{[A-Za-z0-9_]+\}/g, "");
+        if (stripped.includes("{") || stripped.includes("}") || stripped.includes("<")) continue;
         const vars = [...enVal.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map(m => m[1]);
         const zhVars = [...zhVal.matchAll(/\{([A-Za-z0-9_]+)\}/g)].map(m => m[1]);
         if (
           vars.length >= 1 &&
-          vars.length <= 3 &&
+          vars.length <= 4 &&
           new Set(vars).size === vars.length &&
           zhVars.every(v => vars.includes(v))
         ) {
-          const tmplKey = enVal.replace(/\{[A-Za-z0-9_]+\}/g, "${}");
-          const literalLen = tmplKey.replace(/\$\{\}/g, "").trim().length;
-          if (literalLen >= 10) {
+          const litLetters = (stripped.match(/[A-Za-z]/g) || []).length;
+          if (litLetters >= 6) {
+            const tmplKey = enVal.replace(/\{[A-Za-z0-9_]+\}/g, "${}");
             const sameOrder =
               vars.length === zhVars.length && vars.every((v, idx) => v === zhVars[idx]);
             extraTemplates[tmplKey] = sameOrder
@@ -708,6 +706,11 @@ function buildMainProcessI18nHelper({ enable1Password = false } = {}) {
     "Archive thread": "归档对话",
     "Delete": "删除",
     "Discard": "放弃更改",
+    "Discard draft": "丢弃草稿",
+    "Open with": "打开方式",
+    "Reveal in Finder": "在访达中显示",
+    "Reveal in File Explorer": "在文件资源管理器中显示",
+    "Reveal in File Manager": "在文件管理器中显示",
     "Custom...": "自定义...",
     "Custom…": "自定义…",
     "Close": "关闭",

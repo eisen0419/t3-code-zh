@@ -77,7 +77,12 @@ const expectedPairs = [
   ["Tomorrow (09:00)", "明天 (09:00)"],
   ["Next week (Mon 09:00)", "下周 (周一 09:00)"],
   ["Custom...", "自定义..."],
-  ["(1 row)", "(1 行)"]
+  ["(1 row)", "(1 行)"],
+  ["Authenticated · pi", "已认证 · pi"],
+  ["Not authenticated · codex", "未认证 · codex"],
+  ["Branch: main", "分支：main"],
+  ["Push to main", "推送到 main"],
+  ["omarchy is waiting for someone to approve this device", "omarchy 正在等待有人批准此设备"]
 ];
 for (const [src, exp] of expectedPairs) {
   assert.equal(tr(src), exp, `Translation mismatch for "${src}"`);
