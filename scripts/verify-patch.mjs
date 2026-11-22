@@ -118,7 +118,8 @@ assert.equal(pillProps.children[1], "待输入");
 const headingProps = tp("h2", { className: "font-semibold", children: "Input" }, ELEMENT_MARKER);
 assert.equal(headingProps.children, "输入");
 
-// 3c. gt-react <T> (_gtt = "translate-client") hash preservation when <html lang="zh">
+// 3c. gt-react <T> (_gtt = "translate-client") hash preservation — including initial boot frame (lang="en")
+// AND bottom-up nested JSX tags (<span>Applying settings for</span> ... <span>across</span> + <Var> menus)!
 function MockGtT(props) {
   return props.children;
 }
@@ -127,19 +128,64 @@ function MockGtVar(props) {
   return props.children;
 }
 MockGtVar._gtt = "variable-variable";
+function jsxSim(type, rawProps) {
+  const nextProps = tp(type, rawProps, ELEMENT_MARKER);
+  return { $$typeof: ELEMENT_MARKER, type, key: null, ref: null, props: nextProps };
+}
 
-globalThis.document.documentElement.lang = "zh";
-const compoundKids = [
-  "Reconnect ",
-  { $$typeof: ELEMENT_MARKER, type: MockGtVar, key: null, ref: null, props: { children: "MacBook" } },
-  " to change its settings."
-];
-const gtPropsWhenZh = tp(MockGtT, { children: compoundKids }, ELEMENT_MARKER);
-assert.equal(
-  gtPropsWhenZh.children,
-  compoundKids,
-  "gt-react <T> source children must remain untouched when <html lang='zh'> so runtime hashes match!"
-);
+for (const htmlLang of ["en", "zh"]) {
+  globalThis.document.documentElement.lang = htmlLang;
+  const compoundKids = [
+    "Reconnect ",
+    jsxSim(MockGtVar, { children: "MacBook" }),
+    " to change its settings."
+  ];
+  const gtEl = jsxSim(MockGtT, { children: compoundKids });
+  assert.equal(
+    gtEl.props.children[0],
+    "Reconnect ",
+    `gt-react <T> direct string child must stay unmutated when html lang=${htmlLang}`
+  );
+
+  // Simulate exact bottom-up evaluation of settingsLayout scope sentence:
+  // <T><span><span>Applying settings for</span><Var><button>All projects</button></Var></span><span><span>across</span><Var><button>All environments</button></Var></span></T>
+  const projTrigger = jsxSim("button", { children: "All projects" });
+  const envTrigger = jsxSim("button", { children: "All environments" });
+  assert.equal(projTrigger.props.children, "所有项目");
+  assert.equal(envTrigger.props.children, "所有环境");
+
+  const spanApplyLabel = jsxSim("span", { className: "shrink-0", children: "Applying settings for" });
+  // Before wrapping in <T>, standalone <span> translates bottom-up:
+  assert.equal(spanApplyLabel.props.children, "正在应用设置：");
+
+  const scopeSentence = jsxSim(MockGtT, {
+    context: "settings scope sentence; each variable is a menu",
+    children: [
+      jsxSim("span", {
+        className: "flex min-w-0 items-center gap-1.5",
+        children: [spanApplyLabel, jsxSim(MockGtVar, { children: projTrigger })]
+      }),
+      jsxSim("span", {
+        className: "flex min-w-0 items-center gap-1.5",
+        children: [
+          jsxSim("span", { className: "shrink-0", children: "across" }),
+          jsxSim(MockGtVar, { children: envTrigger })
+        ]
+      })
+    ]
+  });
+
+  // Inside <T>, nested <span> source strings MUST be restored to exact English so hash 86d52b318b1a3e7a matches zh-*.js ("设置应用于 ... 位于 ..."),
+  // while <Var> slots MUST keep their Chinese UI labels ("所有项目", "所有环境")!
+  assert.equal(scopeSentence.props.children[0].props.children[0].props.children, "Applying settings for");
+  assert.equal(scopeSentence.props.children[0].props.children[1].props.children.props.children, "所有项目");
+  assert.equal(scopeSentence.props.children[1].props.children[0].props.children, "across");
+  assert.equal(scopeSentence.props.children[1].props.children[1].props.children.props.children, "所有环境");
+
+  // Also verify single-string upstream zh gap fallback (<T>Branch</T> -> "分支") still works!
+  const fallbackBranch = jsxSim(MockGtT, { children: "Branch" });
+  assert.equal(fallbackBranch.props.children, "分支");
+}
 globalThis.document.documentElement.lang = "en";
 
 // 3d. Zero-regex Settings Header & Sidebar Footer button injection (in both zh-CN and en!)

@@ -1695,7 +1695,31 @@ const curatedExact = {
   "Open releases": "打开发布页面",
   "Your organization's managed policy stopped T3 Code from starting. Send the details below to your IT administrator.": "您所在组织的托管策略阻止了 T3 Code 启动。请将下方详情发送给 IT 管理员。",
   "The server wrote no output.": "服务端未输出任何日志。",
-  "T3 Code failed to start": "T3 Code 启动失败"
+  "T3 Code failed to start": "T3 Code 启动失败",
+
+  // Embedded UI Review / Playwright Trace & Inspector labels
+  "Team": "团队",
+  "UI Review": "界面审查",
+  "Pausing before the next action…": "将在下一步操作前暂停…",
+  "No actions yet": "暂无操作记录",
+  "Recording...": "录制中...",
+  "Sessions": "会话列表",
+  "No open sessions.": "暂无打开的会话。",
+  "Target:": "目标：",
+  "Theme:": "主题：",
+  "Generate assertions": "自动生成断言",
+  "Parameters": "参数",
+  "Return value": "返回值",
+  "Image diff": "图像差异对比",
+  "Screenshots": "截图",
+  "Attachments": "附件",
+  "No payload for this request.": "此请求无负载数据。",
+  "Response body is not available for this request.": "此请求的响应正文不可用。",
+  "Could not load font preview": "无法加载字体预览",
+  "Viewport": "视口",
+  "Counts": "统计计数",
+  "Locator": "定位器",
+  "Aria snapshot": "无障碍树快照"
 };
 
 const baseExactMap = {
@@ -2543,21 +2567,94 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
     return props;
   }
 
+  // Track pre-translation props on cloned elements so gt-react <T> can recover 100% pristine source subtrees
+  // even after inner <span>/<a>/<Link> tags have already been evaluated bottom-up by JSX!
+  const ORIG_PROPS_MAP = new WeakMap();
+
+  function restoreSourceSubtreeForGt(node) {
+    if (!node || typeof node !== "object") return node;
+    if (Array.isArray(node)) {
+      let changed = false;
+      const out = new Array(node.length);
+      for (let i = 0; i < node.length; i++) {
+        const origItem = node[i];
+        const nextItem = restoreSourceSubtreeForGt(origItem);
+        if (nextItem !== origItem) changed = true;
+        out[i] = nextItem;
+      }
+      return changed ? out : node;
+    }
+    if ("$$typeof" in node && node.props && typeof node.props === "object") {
+      const childGtt =
+        typeof node.type === "function" && typeof node.type._gtt === "string"
+          ? node.type._gtt
+          : "";
+      // <Var> / <Num> / <DateTime> / <Currency> / <RelativeTime> slots are NOT hashed by gt-react
+      // and hold live UI elements/labels (e.g. [所有项目] / [所有环境] dropdown triggers) — keep them translated!
+      if (childGtt.startsWith("variable")) {
+        return node;
+      }
+      const rawNodeProps = ORIG_PROPS_MAP.get(node.props) || node.props;
+      let nextNodeProps = rawNodeProps;
+      if (rawNodeProps.children !== undefined) {
+        const restoredKids = restoreSourceSubtreeForGt(rawNodeProps.children);
+        if (restoredKids !== rawNodeProps.children) {
+          nextNodeProps = { ...rawNodeProps, children: restoredKids };
+        }
+      }
+      if (childGtt.startsWith("branch") || childGtt.startsWith("plural")) {
+        for (const k in rawNodeProps) {
+          if (k === "children" || k === "branch" || k.startsWith("data-")) continue;
+          const v = rawNodeProps[k];
+          if (v && typeof v === "object") {
+            const rv = restoreSourceSubtreeForGt(v);
+            if (rv !== v) {
+              if (nextNodeProps === rawNodeProps) nextNodeProps = { ...rawNodeProps };
+              nextNodeProps[k] = rv;
+            }
+          }
+        }
+      }
+      if (nextNodeProps !== node.props) {
+        return { ...node, props: nextNodeProps };
+      }
+    }
+    return node;
+  }
+
   function transformProps(type, rawProps, elementMarker) {
     if (!rawProps || typeof rawProps !== "object") return rawProps;
     const props = injectLanguageControls(type, rawProps, elementMarker);
     if (getLocale() === "en") return props;
 
-    // Respect T3 Code's native gt-react <T> / <Var> components (type._gtt) so source-children hashes never break!
-    const isGtComponent = typeof type === "function" && typeof type._gtt === "string";
-    const isNativeGtZhLoaded =
-      typeof document !== "undefined" && document.documentElement?.lang === "zh";
+    // Respect T3 Code's native gt-react <T>/<Branch>/<Plural> components (type._gtt) unconditionally
+    // (including during the initial boot frame before async zh-*.js flips <html lang="zh">), and restore
+    // any bottom-up mutated child tags (<span>, <a>, <Link>, etc.) so gt-react's AST hashes never mismatch!
+    const gtt = typeof type === "function" && typeof type._gtt === "string" ? type._gtt : "";
+    const isGtTranslateRoot = gtt.startsWith("translate");
+    const isGtStructural =
+      isGtTranslateRoot || gtt.startsWith("branch") || gtt.startsWith("plural") || gtt.startsWith("derive");
 
-    const isGtUntranslatedFallback =
-      isGtComponent && typeof props.children === "string" && GT_UNTRANSLATED_SOURCE.has(props.children);
-    const isSkipTag =
-      (typeof type === "string" && SKIP_TAGS.has(type)) ||
-      (isGtComponent && isNativeGtZhLoaded && !isGtUntranslatedFallback);
+    if (isGtStructural) {
+      if (isGtTranslateRoot && typeof props.children === "string" && GT_UNTRANSLATED_SOURCE.has(props.children)) {
+        const t = translateCore(props.children);
+        if (t !== props.children) {
+          const out = { ...props, children: t };
+          ORIG_PROPS_MAP.set(out, props);
+          return out;
+        }
+        return props;
+      }
+      if (props.children !== undefined) {
+        const restoredChildren = restoreSourceSubtreeForGt(props.children);
+        if (restoredChildren !== props.children) {
+          return { ...props, children: restoredChildren };
+        }
+      }
+      return props;
+    }
+
+    const isSkipTag = typeof type === "string" && SKIP_TAGS.has(type);
     let cloned = null;
 
     // 1. Translate children
@@ -2575,7 +2672,7 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
             cloned = { ...props, children: t };
           }
         }
-      } else if (Array.isArray(ch) && !isGtComponent) {
+      } else if (Array.isArray(ch)) {
         if (ch.length === 2 && ch[1] === "Input" && typeof props.className === "string" && props.className.includes("text-indigo-600")) {
           cloned = { ...props, children: [ch[0], "待输入"] };
         } else {
@@ -2609,7 +2706,11 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
       }
     }
 
-    return cloned || props;
+    if (cloned) {
+      ORIG_PROPS_MAP.set(cloned, props);
+      return cloned;
+    }
+    return props;
   }
 
   globalThis.__t3TransformProps = transformProps;
