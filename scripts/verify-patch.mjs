@@ -241,6 +241,50 @@ if (fs.existsSync(candidateAsar)) {
         input: slice,
         stdio: ["pipe", "pipe", "pipe"]
       });
+      if (/^react-(?!dom-)[A-Za-z0-9_-]+\.js$/.test(name)) {
+        const reactSrc = slice.toString("utf8");
+        const hookMatches = reactSrc.match(/__t3TransformProps/g) || [];
+        assert.equal(
+          hookMatches.length,
+          2,
+          "react-*.js must hook ONLY createElement (ternary check + call), NEVER the shared ReactElement constructor used by cloneElement/Children.map!"
+        );
+        // Load real Rolldown runtime + patched react-*.js and verify cloneElement + Children.map preserve <T> source strings!
+        const rtName = Object.keys(assets).find(k => /^rolldown-runtime-.*\.js$/.test(k));
+        if (rtName) {
+          const rtMeta = assets[rtName];
+          const rtB64 = buf.subarray(doff + Number(rtMeta.offset), doff + Number(rtMeta.offset) + rtMeta.size).toString("base64");
+          const reactInlined = reactSrc.replace(
+            `./${rtName}`,
+            `data:text/javascript;base64,${rtB64}`
+          );
+          const reactMod = await import(`data:text/javascript;base64,${Buffer.from(reactInlined).toString("base64")}`);
+          const RealReact = typeof reactMod.t === "function" ? reactMod.t() : reactMod.t;
+          // createElement translates standalone elements:
+          const anchorEl = RealReact.createElement("a", { href: "#" }, "Sharing & access");
+          assert.equal(anchorEl.props.children, "共享与访问");
+          // Inside <T>, gt-react calls Children.map + cloneElement on restored <Link>: must NOT re-translate!
+          const ForwardRefLink = RealReact.forwardRef((p, _r) => RealReact.createElement("a", p, p.children));
+          const guestT = jsxSim(MockGtT, {
+            children: [
+              "Share a thread with a guest who watches it live in a browser and sends messages you approve. Needs T3 Connect: sign in and link this machine in",
+              " ",
+              jsxSim(ForwardRefLink, { to: "/settings/access", children: "Sharing & access" }),
+              ". Turning it off stops every guest link."
+            ]
+          });
+          const mapped = RealReact.Children.map(guestT.props.children, child =>
+            RealReact.isValidElement(child)
+              ? RealReact.cloneElement(child, { ...child.props, "data-_gt": { id: 1 } })
+              : child
+          );
+          assert.equal(
+            mapped[2].props.children,
+            "Sharing & access",
+            "React.Children.map + React.cloneElement inside gt-react <T> must NEVER re-translate restored <Link> children!"
+          );
+        }
+      }
     }
   }
 

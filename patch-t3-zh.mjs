@@ -982,18 +982,19 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
       );
     modifiedFiles.set(jsxRuntimePath, Buffer.from(jsxRuntime, "utf8"));
 
-    // (d) react-*.js (createElement hook using only local parameters)
-    const reactPath = findClientAsset(header, /^react-[A-Za-z0-9_-]+\.js$/);
+    // (d) react-*.js (hook ONLY createElement — NEVER the shared ReactElement constructor used by cloneElement & Children.map,
+    // because gt-react's <T> runs Children.map + cloneElement on its source subtree before hashing!)
+    const reactPath = findClientAsset(header, /^react-(?!dom-)[A-Za-z0-9_-]+\.js$/);
     if (reactPath) {
       let reactBundle = readFileFromAsar(srcFd, dataOffset, header, reactPath);
-      const res = replaceOptionalRegex(
+      const res = replaceRequiredRegex(
         reactBundle,
-        /function\s+([A-Za-z0-9_$]+)\(([A-Za-z0-9_$]+),([A-Za-z0-9_$]+),([A-Za-z0-9_$]+)\)\{var\s+([A-Za-z0-9_$]+)=\4\.ref;return\{\$\$typeof:([A-Za-z0-9_$]+),type:\2,key:\3,ref:\5===void 0\?null:\5,props:\4\}\}/,
-        (_match, fn, type, key, props, ref, marker) =>
-          `function ${fn}(${type},${key},${props}){var ${ref}=${props}.ref;return ${props}=globalThis.__t3TransformProps?globalThis.__t3TransformProps(${type},${props},${marker}):${props},{$$typeof:${marker},type:${type},key:${key},ref:${ref}===void 0?null:${ref},props:${props}}}`,
-        `${path.basename(reactPath)} createElement hook`
+        /(\.createElement=function\(([A-Za-z0-9_$]+),[A-Za-z0-9_$]+,[A-Za-z0-9_$]+\)\{[\s\S]{100,600}?return\s+[A-Za-z0-9_$]+\(\2,[A-Za-z0-9_$]+,)([A-Za-z0-9_$]+)(\)\})/,
+        (_match, prefix, typeVar, propsVar, suffix) =>
+          `${prefix}globalThis.__t3TransformProps?globalThis.__t3TransformProps(${typeVar},${propsVar}):${propsVar}${suffix}`,
+        `${path.basename(reactPath)} createElement-only hook`
       );
-      if (res.applied) modifiedFiles.set(reactPath, Buffer.from(res.code, "utf8"));
+      modifiedFiles.set(reactPath, Buffer.from(res, "utf8"));
     }
 
     // (e) toast-*.js & toastHelpers-*.js (supports both 2-arg and 3-arg showContextMenu signatures)

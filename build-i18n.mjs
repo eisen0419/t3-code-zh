@@ -1979,6 +1979,7 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
   const LOCALE_STORAGE_KEY = "t3code:locale";
   const GT_BOOT_SYNC_KEY = "__t3code:gt-boot-synced";
   const REACT_FRAGMENT_TYPE = Symbol.for("react.fragment");
+  const DEFAULT_ELEMENT_MARKER = Symbol.for("react.transitional.element");
 
   function getLocale() {
     try {
@@ -2570,6 +2571,7 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
   // Track pre-translation props on cloned elements so gt-react <T> can recover 100% pristine source subtrees
   // even after inner <span>/<a>/<Link> tags have already been evaluated bottom-up by JSX!
   const ORIG_PROPS_MAP = new WeakMap();
+  const GT_RESTORED_PROPS = new WeakSet();
 
   function restoreSourceSubtreeForGt(node) {
     if (!node || typeof node !== "object") return node;
@@ -2615,6 +2617,7 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
           }
         }
       }
+      GT_RESTORED_PROPS.add(nextNodeProps);
       if (nextNodeProps !== node.props) {
         return { ...node, props: nextNodeProps };
       }
@@ -2624,7 +2627,9 @@ export function compileRuntimeSource({ extraExact = {}, extraTemplates = {} } = 
 
   function transformProps(type, rawProps, elementMarker) {
     if (!rawProps || typeof rawProps !== "object") return rawProps;
-    const props = injectLanguageControls(type, rawProps, elementMarker);
+    if (GT_RESTORED_PROPS.has(rawProps) || "data-_gt" in rawProps) return rawProps;
+    const marker = elementMarker || DEFAULT_ELEMENT_MARKER;
+    const props = injectLanguageControls(type, rawProps, marker);
     if (getLocale() === "en") return props;
 
     // Respect T3 Code's native gt-react <T>/<Branch>/<Plural> components (type._gtt) unconditionally
