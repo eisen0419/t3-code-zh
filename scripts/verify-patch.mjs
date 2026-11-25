@@ -225,7 +225,8 @@ for (const locale of ["zh-CN", "en"]) {
 store.set("t3code:locale", "zh-CN");
 
 // 4. If T3 Code is installed locally, audit patched app.asar for syntax & Chinglish cleanliness
-const candidateAsar = "/Applications/T3 Code (Beta).app/Contents/Resources/app.asar";
+const candidateAsar =
+  process.env.T3_VERIFY_ASAR_PATH || "/Applications/T3 Code (Beta).app/Contents/Resources/app.asar";
 if (fs.existsSync(candidateAsar)) {
   const buf = fs.readFileSync(candidateAsar);
   const hs = buf.readUInt32LE(12);
@@ -233,16 +234,23 @@ if (fs.existsSync(candidateAsar)) {
   const doff = 8 + buf.readUInt32LE(4);
   const assets = header.files.apps.files.server.files.dist.files.client.files.assets.files;
 
+  let patchedJsxChunks = 0;
+  let patchedReactChunks = 0;
   for (const name of Object.keys(assets)) {
-    if (/^(?:jsx-runtime|react|toast|toastHelpers|zh-cn-i18n).*\.js$/.test(name)) {
-      const m = assets[name];
-      const slice = buf.subarray(doff + Number(m.offset), doff + Number(m.offset) + m.size);
+    if (!name.endsWith(".js")) continue;
+    const m = assets[name];
+    const slice = buf.subarray(doff + Number(m.offset), doff + Number(m.offset) + m.size);
+    const hasInjectedI18nImport = name !== "zh-cn-i18n.js" && slice.includes('import"./zh-cn-i18n.js";');
+    if (hasInjectedI18nImport) patchedJsxChunks++;
+    if (hasInjectedI18nImport || /^(?:jsx-runtime|react|toast|toastHelpers|zh-cn-i18n).*\.js$/.test(name)) {
       execFileSync(process.execPath, ["--check", "--input-type=module"], {
         input: slice,
         stdio: ["pipe", "pipe", "pipe"]
       });
       if (/^react-(?!dom-)[A-Za-z0-9_-]+\.js$/.test(name)) {
         const reactSrc = slice.toString("utf8");
+        if (!reactSrc.includes(".createElement=function(")) continue;
+        patchedReactChunks++;
         const hookMatches = reactSrc.match(/__t3TransformProps/g) || [];
         assert.equal(
           hookMatches.length,
@@ -287,6 +295,8 @@ if (fs.existsSync(candidateAsar)) {
       }
     }
   }
+  assert.equal(patchedJsxChunks, 1, `Expected exactly 1 patched JSX runtime chunk, got ${patchedJsxChunks}`);
+  assert.equal(patchedReactChunks, 1, `Expected exactly 1 patched React core chunk, got ${patchedReactChunks}`);
 
   let cjkSpace = 0;
   let chinglish = 0;
