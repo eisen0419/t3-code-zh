@@ -224,6 +224,26 @@ function findClientAsset(header, regex) {
   return `apps/server/dist/client/assets/${matches[0]}`;
 }
 
+function findClientAssetByContent(fd, dataOffset, header, contentRegex, nameFilter = null) {
+  const assetsDir = getFileNode(header, "apps/server/dist/client/assets");
+  if (!assetsDir || !assetsDir.files) return null;
+  const jsFiles = Object.entries(assetsDir.files)
+    .filter(
+      ([name, node]) =>
+        name.endsWith(".js") &&
+        node &&
+        typeof node.size === "number" &&
+        (!nameFilter || nameFilter.test(name))
+    )
+    .sort((a, b) => a[1].size - b[1].size);
+  for (const [name] of jsFiles) {
+    const relPath = `apps/server/dist/client/assets/${name}`;
+    const src = readFileFromAsar(fd, dataOffset, header, relPath);
+    if (contentRegex.test(src)) return relPath;
+  }
+  return null;
+}
+
 function replaceRequiredRegex(source, regex, replacement, label) {
   if (!regex.test(source)) {
     throw new Error(`Required patch target not found for [${label}]`);
@@ -967,15 +987,20 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
     );
     modifiedFiles.set("apps/server/dist/client/index.html", Buffer.from(indexHtml, "utf8"));
 
-    // (c) jsx-runtime-*.js (pass only local parameters (type, props, marker) — zero cross-scope identifiers!)
-    const jsxRuntimePath = findClientAsset(header, /^jsx-runtime-[A-Za-z0-9_-]+\.js$/);
-    if (!jsxRuntimePath) throw new Error("Could not find jsx-runtime-*.js in ASAR");
+    // (c) jsx-runtime chunk (jsx-runtime-*.js in <=0.1.11, or merged shared chunk e.g. with-selector-*.js in >=0.1.12;
+    // pass only local parameters (type, props, marker) — zero cross-scope identifiers!)
+    const jsxRuntimeHookRe =
+      /return\s+([A-Za-z0-9_$]+)=([A-Za-z0-9_$]+)\.ref,\{\$\$typeof:([A-Za-z0-9_$]+),type:([A-Za-z0-9_$]+),key:([A-Za-z0-9_$]+),ref:\1===void 0\?null:\1,props:\2\}/;
+    const jsxRuntimePath =
+      findClientAsset(header, /^jsx-runtime-[A-Za-z0-9_-]+\.js$/) ||
+      findClientAssetByContent(srcFd, dataOffset, header, jsxRuntimeHookRe);
+    if (!jsxRuntimePath) throw new Error("Could not find JSX runtime chunk in ASAR");
     let jsxRuntime = readFileFromAsar(srcFd, dataOffset, header, jsxRuntimePath);
     jsxRuntime =
       `import"./zh-cn-i18n.js";` +
       replaceRequiredRegex(
         jsxRuntime,
-        /return\s+([A-Za-z0-9_$]+)=([A-Za-z0-9_$]+)\.ref,\{\$\$typeof:([A-Za-z0-9_$]+),type:([A-Za-z0-9_$]+),key:([A-Za-z0-9_$]+),ref:\1===void 0\?null:\1,props:\2\}/,
+        jsxRuntimeHookRe,
         (_match, ref, props, marker, type, key) =>
           `return ${ref}=${props}.ref,${props}=globalThis.__t3TransformProps?globalThis.__t3TransformProps(${type},${props},${marker}):${props},{$$typeof:${marker},type:${type},key:${key},ref:${ref}===void 0?null:${ref},props:${props}}`,
         `${path.basename(jsxRuntimePath)} transformProps hook`
@@ -983,13 +1008,23 @@ async function applyPatch({ appPath = null, onlyIfUnpatched = false, with1Passwo
     modifiedFiles.set(jsxRuntimePath, Buffer.from(jsxRuntime, "utf8"));
 
     // (d) react-*.js (hook ONLY createElement — NEVER the shared ReactElement constructor used by cloneElement & Children.map,
-    // because gt-react's <T> runs Children.map + cloneElement on its source subtree before hashing!)
-    const reactPath = findClientAsset(header, /^react-(?!dom-)[A-Za-z0-9_-]+\.js$/);
+    // because gt-react's <T> runs Children.map + cloneElement on its source subtree before hashing!
+    // Match by content across react-*.js chunks because v0.1.12+ emits multiple react-<hash>.js chunks.)
+    const reactCreateElementRe =
+      /(\.createElement=function\(([A-Za-z0-9_$]+),[A-Za-z0-9_$]+,[A-Za-z0-9_$]+\)\{[\s\S]{100,600}?return\s+[A-Za-z0-9_$]+\(\2,[A-Za-z0-9_$]+,)([A-Za-z0-9_$]+)(\)\})/;
+    const reactPath =
+      findClientAssetByContent(
+        srcFd,
+        dataOffset,
+        header,
+        reactCreateElementRe,
+        /^react-(?!dom-)[A-Za-z0-9_-]+\.js$/
+      ) || findClientAsset(header, /^react-(?!dom-)[A-Za-z0-9_-]+\.js$/);
     if (reactPath) {
       let reactBundle = readFileFromAsar(srcFd, dataOffset, header, reactPath);
       const res = replaceRequiredRegex(
         reactBundle,
-        /(\.createElement=function\(([A-Za-z0-9_$]+),[A-Za-z0-9_$]+,[A-Za-z0-9_$]+\)\{[\s\S]{100,600}?return\s+[A-Za-z0-9_$]+\(\2,[A-Za-z0-9_$]+,)([A-Za-z0-9_$]+)(\)\})/,
+        reactCreateElementRe,
         (_match, prefix, typeVar, propsVar, suffix) =>
           `${prefix}globalThis.__t3TransformProps?globalThis.__t3TransformProps(${typeVar},${propsVar}):${propsVar}${suffix}`,
         `${path.basename(reactPath)} createElement-only hook`
